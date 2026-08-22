@@ -1,0 +1,88 @@
+========================================================================
+                      ADMIN FOLDER SCHEMA GUIDE
+========================================================================
+
+This file explains the structure (schema) and valid options for all 4 
+configuration files located inside this `admin` folder. 
+If you ever want to manually edit these files, follow these rules.
+
+------------------------------------------------------------------------
+1. tasks.json & current_task_config.json
+------------------------------------------------------------------------
+`tasks.json` contains a LIST [ ] of task objects.
+`current_task_config.json` contains a SINGLE { } task object that is currently running.
+
+Schema Example for a single Task Object:
+{
+    "id": "3121fd55",
+    "created_at": "2026-08-16T02:50:14.605717",
+    "search_terms": [
+        "Public School",
+        "High School"
+    ],
+    "locality": "NewFortMyers",
+    "zip_codes": [
+        "76003",
+        "46007"
+    ],
+    "mode": "both",
+    "status": "running",
+    "progress": {
+        "completed_zips": [],
+        "current_step": "init"
+    }
+}
+
+VALID OPTIONS EXPLAINED:
+- "id": An 8-character unique string (do not change manually).
+- "created_at": ISO timestamp of creation.
+- "search_terms": Must be a valid JSON array of strings.
+- "locality": Any string. Used for naming the final output folder.
+- "zip_codes": Must be a valid JSON array of strings (not integers).
+- "mode": What kind of scraping this task requires.
+    Valid options:
+      * "emails" (Runs Google Maps -> Email Scraper)
+      * "phones" (Runs Google Maps -> Phone Scraper)
+      * "both"   (Runs Google Maps -> Emails -> Phones)
+- "status": The current state of the task in the queue.
+    Valid options:
+      * "pending"   (Waiting to be picked up by the executor)
+      * "running"   (Currently being executed)
+      * "completed" (Finished successfully and archived)
+      * "paused"    (Cancelled/Paused midway by the user)
+      * "error"     (Failed during execution)
+- "progress.current_step": 
+    Valid options:
+      * "init" (Just started)
+      * "mapping" (Running lead.py)
+      * "aggregating" (Running aggregate.py)
+      * "email_scrape" (Running pipeline.py)
+      * "phone_scrape" (Running find_phone.py)
+
+------------------------------------------------------------------------
+2. health_profiles.json
+------------------------------------------------------------------------
+This file is an extremely simple JSON array containing absolute paths to Chrome profiles that have been verified as "Healthy" (meaning the Instant Data Scraper extension is installed and working).
+
+Schema Example:
+[
+    "C:\\Users\\DhruvBisht\\ChromeUserData1",
+    "C:\\Users\\DhruvBisht\\ChromeUserData3"
+]
+
+Rules:
+- Must be a flat list of strings.
+- Paths MUST use double backslashes (\\) if editing manually on Windows to prevent JSON escape errors.
+
+------------------------------------------------------------------------
+3. Task_Ids.txt
+------------------------------------------------------------------------
+This is a plain text ledger, not a JSON file. Every time a task completes successfully, the executor appends a new line to this file.
+
+Schema Example:
+3121fd55 | NewFortMyers | 2026-08-16T02:51:00.123456
+3e2d48e7 | California | 2026-08-16T02:55:00.123456
+
+Rules:
+- Format is: TaskID | Locality | CompletionTimestamp
+- Used strictly for historical reference. You don't usually need to edit this manually.
