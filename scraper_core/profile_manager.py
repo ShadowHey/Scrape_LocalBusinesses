@@ -156,78 +156,7 @@ def create_and_setup_profile(profile_path: Path):
             except:
                 pass
                 
-        # --- VERIFICATION STEP ---
-        print("\nAutomated verification in progress...")
-        
-        try:
-            import lead
-        except ImportError:
-            print("  [!] Could not import lead.py for verification helpers.")
-            return False
-
-        with sync_playwright() as p:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=user_data_dir,
-                channel="chrome",
-                headless=False,
-                viewport=None,
-                args=[
-                    "--profile-directory=Default",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows"
-                ],
-                ignore_default_args=[
-                    "--disable-extensions",
-                    "--disable-component-extensions-with-background-pages",
-                ],
-                accept_downloads=True
-            )
-            v_page = context.new_page()
-            import urllib.parse
-            query = "trucking agency in dallas"
-            search_url = f"https://www.google.com/maps/search/{urllib.parse.quote_plus(query)}"
-            print(f"  Navigating directly to Google Maps search: '{query}'...")
-            v_page.goto(search_url, wait_until="domcontentloaded")
-            
-            print("  Waiting 8 seconds for results to load...")
-            time.sleep(8)
-            
-            print("  Triggering Instant Data Scraper...")
-            try:
-                extension_id, _ = lead.discover_extension(context, "Instant Data Scraper", EXTENSION_ID)
-                sw = lead.get_extension_service_worker(context, extension_id)
-                tab_id = lead.get_tab_id(sw, v_page.url)
-            except Exception as e:
-                print(f"  [❌] Verification failed: Could not get extension service worker/tab ID. Error: {e}")
-                return False
-                
-            ext_page = context.new_page()
-            popup_url = f"chrome-extension://{extension_id}/src/popup.html?tabid={tab_id}&url={urllib.parse.quote(v_page.url, safe='')}"
-            ext_page.goto(popup_url)
-            
-            print("  Waiting for data extraction and clicking CSV...")
-            try:
-                # Wait for extraction to finish (the CSV button appears/becomes enabled)
-                csv_btn = ext_page.get_by_text(re.compile(r"^CSV$", re.I)).first
-                csv_btn.wait_for(state="visible", timeout=20000)
-                
-                with ext_page.expect_download(timeout=20000) as download_info:
-                    csv_btn.click()
-                download = download_info.value
-                
-                print(f"  [✅] Verification successful! Downloaded file: {download.suggested_filename}")
-                time.sleep(1)
-            except Exception as e:
-                print(f"  [❌] Verification failed: Could not download CSV. Error: {e}")
-                return False
-                
-            try:
-                context.close()
-            except:
-                pass
+        # Verification step removed as requested.
 
     except Exception as e:
         print(f"Error during setup: {e}")

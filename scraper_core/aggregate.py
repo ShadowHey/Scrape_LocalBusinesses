@@ -1,5 +1,5 @@
 import os
-import glob
+import sqlite3
 import pandas as pd
 from pathlib import Path
 
@@ -14,26 +14,31 @@ def aggregate_temp_csvs():
     output_dir.mkdir(parents=True, exist_ok=True)
     final_output_file = output_dir / "aggregated_leads.csv"
     
-    all_dataframes = []
     csv_files = list(input_dir.glob("*.csv"))
     
     if not csv_files:
         print(f"No CSV files found in {input_dir}.")
         return
 
-    print(f"Found {len(csv_files)} CSV files. Aggregating...")
+    print(f"Found {len(csv_files)} CSV files. Aggregating via SQLite...")
 
+    db_path = output_dir / "pipeline_cache.db"
+    if db_path.exists():
+        try: db_path.unlink()
+        except: pass # Ignore if locked
+
+    conn = sqlite3.connect(str(db_path))
+    
+    initial_count = 0
+    valid_files = 0
+    
     for csv_file in csv_files:
         try:
             df = pd.read_csv(csv_file)
             
-            # The filename format is expected to be: Term_zipcode.csv
-            # E.g., Travel_Agency_30002.csv
             filename_parts = csv_file.stem.split('_')
             zip_code = filename_parts[-1] if filename_parts else "Unknown"
             
-            # Create a dynamic mapping for column headers 
-            # (Instant Data Scraper relies on CSS classes as headers)
             rename_map = {}
             for col in df.columns:
                 c_lower = str(col).lower().strip()
@@ -51,42 +56,62 @@ def aggregate_temp_csvs():
                     if 'website' not in rename_map.values():
                         rename_map[col] = 'website'
             
-            # Apply the mapping
             df.rename(columns=rename_map, inplace=True)
             
-            # Discard any rows that don't have a valid link, as they aren't useful leads
             if 'link' not in df.columns:
                 continue
                 
             if 'name' not in df.columns:
                 df['name'] = "Unknown"
                 
-            # Add metadata columns
             df['source_zip'] = zip_code
             df['tag'] = 'extension_scrape'
             df['source_file'] = csv_file.name
             
-            all_dataframes.append(df)
+            initial_count += len(df)
+            valid_files += 1
+            
+            # Push to SQLite directly
+            df.to_sql("raw_leads", conn, if_exists="append", index=False)
             
         except Exception as e:
             print(f"Error processing {csv_file.name}: {e}")
 
-    if not all_dataframes:
+    if valid_files == 0:
         print("No valid data could be extracted from the CSV files.")
+        conn.close()
         return
 
-    # Combine everything into one giant dataframe
-    master_df = pd.concat(all_dataframes, ignore_index=True)
-    
-    initial_count = len(master_df)
-    
-    # Remove duplicates based on the listing link
-    master_df.drop_duplicates(subset=['link'], inplace=True)
-    final_count = len(master_df)
-    
+    # Deduplicate via SQL
+    print("Deduplicating leads...")
+    cursor = conn.cursor()
+    # By using GROUP BY link, we keep the first inserted row per link
+    cursor.execute("""
+        CREATE TABLE final_leads AS
+        SELECT * FROM raw_leads
+        GROUP BY link
+    """)
+    conn.commit()
 
-    # Save the aggregated output
-    master_df.to_csv(final_output_file, index=False)
+    # Get final count
+    cursor.execute("SELECT COUNT(*) FROM final_leads")
+    final_count = cursor.fetchone()[0]
+
+    # Export to CSV in chunks
+    print("Exporting to aggregated_leads.csv in chunks...")
+    if final_output_file.exists():
+        try: final_output_file.unlink()
+        except: pass
+        
+    for chunk in pd.read_sql_query("SELECT * FROM final_leads", conn, chunksize=10000):
+        chunk.to_csv(final_output_file, mode='a', index=False, header=not final_output_file.exists())
+        
+    conn.close()
+    
+    # Cleanup DB
+    if db_path.exists():
+        try: db_path.unlink()
+        except: pass
     
     # --- Update history.json ---
     try:
@@ -106,7 +131,6 @@ def aggregate_temp_csvs():
         print(f"Warning: Could not update history metrics: {e}")
     # ---------------------------
 
-    
     print(f"\n✅ Aggregation Complete!")
     print(f"Total rows parsed: {initial_count}")
     print(f"Total unique leads: {final_count}")

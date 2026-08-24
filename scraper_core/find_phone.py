@@ -103,25 +103,21 @@ def main():
         print(f"Error: {INPUT_FILE} not found. Please run aggregation first.")
         return
         
-    df = pd.read_csv(INPUT_FILE)
-    if 'link' not in df.columns:
-        print("Error: No 'link' column found in the input file.")
-        return
-        
-    # Prepare processed set
     processed_links = set()
     if OUTPUT_CSV.exists():
         try:
-            processed_df = pd.read_csv(OUTPUT_CSV)
-            if 'Link' in processed_df.columns:
-                processed_links = set(processed_df['Link'].dropna().astype(str))
-                print(f"Found existing output. Skipping {len(processed_links)} processed links.")
+            # We can read existing output without chunking since it's usually smaller, or chunk it if needed.
+            # Assuming output is manageable, or just use python csv.
+            import csv
+            with open(OUTPUT_CSV, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if 'Link' in row and row['Link']:
+                        processed_links.add(str(row['Link']))
+            print(f"Found existing output. Skipping {len(processed_links)} processed links.")
         except Exception as e:
             print(f"Could not read {OUTPUT_CSV}: {e}")
             
-    total_leads = len(df)
-    print(f"Total leads in file: {total_leads}")
-    
     with sync_playwright() as p:
         # Launch a fresh, unauthenticated profile (headful to avoid blocks and show progress)
         browser = p.chromium.launch(headless=False)
@@ -129,25 +125,30 @@ def main():
         page = context.new_page()
         
         processed_count = 0
-        for index, row in df.iterrows():
-            link = str(row.get('link', ''))
-            
-            if not link or link == 'nan':
+        
+        for df_chunk in pd.read_csv(INPUT_FILE, chunksize=5000):
+            if 'link' not in df_chunk.columns:
                 continue
                 
-            if link in processed_links:
-                continue
+            for index, row in df_chunk.iterrows():
+                link = str(row.get('link', ''))
                 
-            while True:
-                name, phone = extract_phone_and_name(page, link)
-                if name == "NETWORK_ERROR":
-                    print(f"\n[NETWORK ERROR] {phone}. Waiting for internet connection to resume...")
-                    while not check_internet():
-                        time.sleep(5)
-                    print("[+] Internet restored! Retrying phone extraction...")
-                    time.sleep(2)
+                if not link or link == 'nan':
                     continue
-                break
+                    
+                if link in processed_links:
+                    continue
+                    
+                while True:
+                    name, phone = extract_phone_and_name(page, link)
+                    if name == "NETWORK_ERROR":
+                        print(f"\n[NETWORK ERROR] {phone}. Waiting for internet connection to resume...")
+                        while not check_internet():
+                            time.sleep(5)
+                        print("[+] Internet restored! Retrying phone extraction...")
+                        time.sleep(2)
+                        continue
+                    break
                 
             # Save incrementally
             row_dict = {

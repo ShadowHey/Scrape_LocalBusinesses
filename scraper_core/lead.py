@@ -13,7 +13,8 @@ import network_utils
 # CONFIGURATION
 # =====================================================================
 
-# The list of business types you're searching for
+# BROWSER_MODE Options: "visible", "headless", "offscreen"
+BROWSER_MODE = "headless"
 
 import json
 import os
@@ -123,7 +124,8 @@ def open_popup_and_crawl(context, extension_id, sw, maps_page, destination_csv: 
     popup.wait_for_load_state("domcontentloaded")
     
     try:
-        maps_page.bring_to_front()
+        if BROWSER_MODE == "visible":
+            maps_page.bring_to_front()
         if not cycle_to_correct_table(popup):
             print("Could not find correct table")
             return False
@@ -135,7 +137,8 @@ def open_popup_and_crawl(context, extension_id, sw, maps_page, destination_csv: 
         delay_container = popup.get_by_text(re.compile("max delay", re.I)).locator("..")
         delay_container.locator("input").first.fill("60")
         
-        maps_page.bring_to_front()
+        if BROWSER_MODE == "visible":
+            maps_page.bring_to_front()
         popup.get_by_role("button", name=re.compile("start crawling", re.I)).first.click()
         
         popup.get_by_text(re.compile(r"crawling stopped\.\s*please download data or continue crawling\.", re.I)).first.wait_for(state="visible", timeout=30 * 60 * 1000)
@@ -187,11 +190,94 @@ def process_extension_csv(raw_csv_path: Path, master_file: str, zip_code: str):
     master_df.drop_duplicates(subset=['link'], inplace=True)
     master_df.to_csv(master_file, index=False)
 
-def build_maps_url(search_term: str, zipcode: str) -> str:
-    query = f"{search_term} in {zipcode}"
+def build_maps_url(query: str) -> str:
     return f"https://www.google.com/maps/search/{quote_plus(query)}"
 
 import queue
+
+def launch_browser(p, profile_idx, user_data_dir, profile_directory="Default"):
+    is_headless = (BROWSER_MODE == "headless")
+    
+    browser_args = [
+        f"--profile-directory={profile_directory}",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--blink-settings=imagesEnabled=false",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows"
+    ]
+    
+    if BROWSER_MODE == "offscreen":
+        browser_args.append("--window-position=-10000,-10000")
+        
+    context = p.chromium.launch_persistent_context(
+        user_data_dir=user_data_dir,
+        channel="chrome",
+        headless=is_headless,
+        args=browser_args,
+        viewport=None,
+        timeout=30_000,
+        ignore_default_args=[
+            "--disable-extensions",
+            "--disable-component-extensions-with-background-pages",
+        ],
+    )
+    context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
+    extension_id, manifest = discover_extension(context, "Instant Data Scraper", "ofaokhiedipichpaobibbnahnkdoiiah")
+    sw = get_extension_service_worker(context, extension_id)
+    maps_page = context.new_page()
+    return context, extension_id, sw, maps_page
+
+import csv
+
+def detect_page_state(page):
+    """
+    Checks the screen instantly up to 30 seconds to determine the state.
+    Returns: 'list', 'single', 'no_results', or 'timeout' (if crashed/blank).
+    """
+    for _ in range(30):
+        # 1. List of businesses (has the search result links)
+        if page.locator("a.hfpxzc").count() > 0:
+            return "list"
+            
+        # 2. No Results (Check text in main panel or body)
+        try:
+            panel_text = page.locator("div[role='main']").inner_text() if page.locator("div[role='main']").count() > 0 else page.locator("body").inner_text()
+            if "Google Maps can't find" in panel_text or "We could not find anything" in panel_text or "No results found" in panel_text or "Make sure your search is spelled correctly" in panel_text:
+                return "no_results"
+        except Exception:
+            pass
+            
+        # 3. Single Result Profile (has h1 title but no list)
+        if page.locator("h1.DUwDvf").count() > 0:
+            return "single"
+            
+        page.wait_for_timeout(1000)
+        
+    return "timeout"
+
+def extract_single_profile(page, csv_path):
+    """
+    Extracts data from a single business profile and saves it to a CSV format
+    that aggregate.py expects.
+    """
+    name = page.locator("h1.DUwDvf").first.inner_text() if page.locator("h1.DUwDvf").count() > 0 else "Unknown"
+    
+    address_btn = page.locator('button[data-item-id="address"]').first
+    address = address_btn.inner_text().strip() if address_btn.count() > 0 else ""
+    
+    website_btn = page.locator('a[data-item-id="authority"]').first
+    website = website_btn.get_attribute("href") if website_btn.count() > 0 else ""
+    
+    cat_btn = page.locator('button.DkEaL').first
+    category = cat_btn.inner_text().strip() if cat_btn.count() > 0 else ""
+    
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['qbf1pd', 'hfpxzc href', 'address', 'lcr4fd href', 'w4efsd'])
+        writer.writerow([name, page.url, address, website, category])
+
 
 def worker(profile_idx: int, task_queue):
     print(f"\n[Profile {profile_idx}] Starting worker.")
@@ -209,45 +295,20 @@ def worker(profile_idx: int, task_queue):
     
     with sync_playwright() as p:
         try:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=USER_DATA_DIR,
-                channel="chrome",
-                headless=False,
-                args=[
-                    f"--profile-directory={PROFILE_DIRECTORY}",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                    "--blink-settings=imagesEnabled=false",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows"
-                ],
-                viewport=None,
-                timeout=30_000,
-                ignore_default_args=[
-                    "--disable-extensions",
-                    "--disable-component-extensions-with-background-pages",
-                ],
-            )
-            
-            context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
-            
-        except PWTimeout:
-            print(f"[Profile {profile_idx}] Error: Chrome did not start within 30 seconds.")
+            context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
+        except Exception as e:
+            print(f"[Profile {profile_idx}] Fatal error launching browser: {e}")
             return
             
-        try:
-            extension_id, manifest = discover_extension(context, "Instant Data Scraper", "ofaokhiedipichpaobibbnahnkdoiiah")
-            sw = get_extension_service_worker(context, extension_id)
-            maps_page = context.new_page()
+        tasks_since_restart = 0
             
+        try:
             while True:
                 pause_flag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin', 'PAUSE_FLAG')
                 if os.path.exists(pause_flag_path):
                     print(f"[Profile {profile_idx}] Pause flag detected. Closing browser for health check...")
-                    try: maps_page.close()
+                    try: context.close()
                     except: pass
-                    context.close()
                     
                     idle_marker = TEMP_DIR / f"profile_{profile_idx}_idle.txt"
                     with open(idle_marker, "w") as f: f.write("1")
@@ -260,30 +321,8 @@ def worker(profile_idx: int, task_queue):
                         except: pass
                         
                     print(f"[Profile {profile_idx}] Resuming after health check...")
-                    context = p.chromium.launch_persistent_context(
-                        user_data_dir=USER_DATA_DIR,
-                        channel="chrome",
-                        headless=False,
-                        args=[
-                            f"--profile-directory={PROFILE_DIRECTORY}",
-                            "--disable-dev-shm-usage",
-                            "--disable-gpu",
-                            "--disable-software-rasterizer",
-                            "--blink-settings=imagesEnabled=false",
-                            "--disable-background-timer-throttling",
-                            "--disable-backgrounding-occluded-windows"
-                        ],
-                        viewport=None,
-                        timeout=30_000,
-                        ignore_default_args=[
-                            "--disable-extensions",
-                            "--disable-component-extensions-with-background-pages",
-                        ],
-                    )
-                    context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
-                    extension_id, manifest = discover_extension(context, "Instant Data Scraper", "ofaokhiedipichpaobibbnahnkdoiiah")
-                    sw = get_extension_service_worker(context, extension_id)
-                    maps_page = context.new_page()
+                    context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
+                    tasks_since_restart = 0
 
                 try:
                     term, zip_code = task_queue.get_nowait()
@@ -291,7 +330,19 @@ def worker(profile_idx: int, task_queue):
                     print(f"[Profile {profile_idx}] No more tasks in queue. Exiting.")
                     break
                     
-                query = f"{term} in {zip_code}"
+                if tasks_since_restart >= 5:
+                    print(f"[Profile {profile_idx}] Proactively restarting browser to free memory (5 tasks completed)...")
+                    try: context.close()
+                    except: pass
+                    try:
+                        context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
+                        tasks_since_restart = 0
+                    except Exception as e:
+                        print(f"[Profile {profile_idx}] Fatal error during proactive restart: {e}")
+                        task_queue.put((term, zip_code))
+                        break
+                    
+                query = f"{term} in {zip_code} {locality_label}".strip()
                 raw_csv_path = TEMP_DIR / f"{term.replace(' ', '_')}_{zip_code}.csv"
                 
                 if raw_csv_path.exists() and raw_csv_path.stat().st_size > 0:
@@ -302,15 +353,35 @@ def worker(profile_idx: int, task_queue):
                 network_utils.wait_for_network()
                 
                 try:
-                    url = build_maps_url(term, zip_code)
+                    url = build_maps_url(query)
                     maps_page.goto(url, wait_until="domcontentloaded")
-                    maps_page.wait_for_selector("a.hfpxzc", timeout=30_000)
-                    maps_page.bring_to_front()
                     
-                    success = open_popup_and_crawl(context, extension_id, sw, maps_page, raw_csv_path)
+                    state = detect_page_state(maps_page)
+                    print(f"[Profile {profile_idx}] State: {state}")
                     
-                    if success:
+                    if state == "no_results":
+                        print(f"  -> Skipping '{query}' (0 results)")
+                        tasks_since_restart += 1
+                        continue
+                        
+                    elif state == "single":
+                        print(f"  -> Extracting single profile directly")
+                        extract_single_profile(maps_page, raw_csv_path)
                         print(f"  -> Extracted to {raw_csv_path.name}")
+                        tasks_since_restart += 1
+                        continue
+                        
+                    elif state == "list":
+                        if BROWSER_MODE == "visible":
+                            maps_page.bring_to_front()
+                        
+                        success = open_popup_and_crawl(context, extension_id, sw, maps_page, raw_csv_path)
+                        
+                        if success:
+                            print(f"  -> Extracted to {raw_csv_path.name}")
+                            tasks_since_restart += 1
+                    else:
+                        raise Exception("Timeout waiting for map elements (Possible Bot Challenge or Crash)")
                         
                 except Exception as e:
                     print(f"  Error on '{query}': {e}")
@@ -318,15 +389,23 @@ def worker(profile_idx: int, task_queue):
                         network_utils.wait_for_network()
                         print(f"  Retrying '{query}' after network restored...")
                         task_queue.put((term, zip_code))
-                    
-                    try: maps_page.close()
-                    except: pass
-                    maps_page = context.new_page()
-                    
-        except Exception as e:
-            print(f"[Profile {profile_idx}] Fatal error: {e}")
+                    else:
+                        print(f"  [Profile {profile_idx}] Browser crashed or timed out. Initiating Reactive Recovery...")
+                        try: context.close()
+                        except: pass
+                        
+                        task_queue.put((term, zip_code))
+                        
+                        try:
+                            context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
+                            tasks_since_restart = 0
+                        except Exception as crash_e:
+                            print(f"[Profile {profile_idx}] Fatal error during reactive recovery: {crash_e}")
+                            break
         finally:
-            context.close()
+            try: context.close()
+            except: pass
+
 def run():
     print(f"Launching Orchestrator for {len(search_terms)} terms across {len(zip_codes)} zip codes in {locality_label}")
     import multiprocessing
