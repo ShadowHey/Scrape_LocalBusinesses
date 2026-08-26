@@ -46,7 +46,7 @@ def update_history_metrics(emails_found_bool):
 # Configuration
 INPUT_FILE = Path("final_results/aggregated_leads.csv")
 OUTPUT_CSV = Path("Emails_Fetched.csv")
-NUM_WORKER_THREADS = 5
+NUM_WORKER_THREADS = 50
 
 # Thread-safe queue and file lock
 lead_queue = queue.Queue(maxsize=1000)
@@ -128,7 +128,7 @@ def main():
                 for row in reader:
                     if 'link' in row and row['link']:
                         processed_links.add(str(row['link']))
-                    elif 'name' in row and row['name']:
+                    elif 'name' in row and row['name'] and row['name'] != 'Unknown':
                         processed_names.add(str(row['name']))
             print(f"Loaded {len(processed_links) + len(processed_names)} processed identifiers.")
         except Exception as e:
@@ -142,7 +142,7 @@ def main():
             for row in reader:
                 if 'link' in row and str(row['link']) in processed_links:
                     continue
-                if 'name' in row and str(row['name']) in processed_names:
+                if 'name' in row and str(row['name']) in processed_names and str(row['name']) != 'Unknown':
                     continue
                 total_count += 1
     except Exception as e:
@@ -169,7 +169,7 @@ def main():
         for row in reader:
             if 'link' in row and str(row['link']) in processed_links:
                 continue
-            if 'name' in row and str(row['name']) in processed_names:
+            if 'name' in row and str(row['name']) in processed_names and str(row['name']) != 'Unknown':
                 continue
             
             if 'website' not in row:

@@ -71,6 +71,13 @@ def aggregate_temp_csvs():
             initial_count += len(df)
             valid_files += 1
             
+            core_columns = ['link', 'name', 'rating_or_category', 'address', 'website', 'source_zip', 'tag', 'source_file']
+            for c in core_columns:
+                if c not in df.columns:
+                    df[c] = None
+            df = df[core_columns]
+
+            
             # Push to SQLite directly
             df.to_sql("raw_leads", conn, if_exists="append", index=False)
             

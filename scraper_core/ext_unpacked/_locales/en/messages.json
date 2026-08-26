@@ -1,0 +1,161 @@
+{
+  "optionsTitle": {
+    "message": "Turn any website into a spreadsheet in a second"
+  },
+  "optionsSubtitle": {
+    "message": "This tool detects tables on any page, handles infinite scroll, and exports clean data to CSV or Excel - no coding required. It even suggests the right columns automatically, based on what other users scrape on the same site. To make that possible, Instant Data Scraper uses the URLs you visit. You can opt out any time."
+  },
+  "optionsPrivacyText": {
+    "message": "Instant Data Scraper needs to process the URLs you visit and the information about such URLs (\"Browsing Data\") to provide you with our Presets feature and the queries you run and the search results you receive (\"SERP Data\"). Certain details collected in the Browsing Data and the SERP Data could qualify as sensitive personal information under applicable privacy laws and regulations, and we need your consent to process this data. Since our affiliated companies facilitate some of our features and services, the Browsing Data and SERP Data may be disclosed to these affiliates. Some of our affiliated companies may also use the Browsing Data and SERP Data to create and provide their market intelligence services. These affiliated companies may disclose some of this information to its customers as part of these market intelligence services. By clicking \"Accept\" below you agree to the use of your Browsing Data and SERP Data in this way. You can opt-out of this use of your information at any time, but please note that this may affect your ability to access some of our services."
+  },
+  "optionsAgree": {
+    "message": "Agree"
+  },
+  "optionsDisagree": {
+    "message": "Disagree"
+  },
+  "optInFooter": {
+    "message": "By using this extension you agree to our {{terms}} and acknowledge our {{privacy}}."
+  },
+  "optInTermsLinkText": {
+    "message": "Terms of Services"
+  },
+  "optInPrivacyLinkText": {
+    "message": "Privacy Policy"
+  },
+  "optionsWelcomeTo": {
+    "message": "Welcome to "
+  },
+  "optionsWelcomeIds": {
+    "message": "Instant Data Scraper"
+  },
+  "optionsDisagreeModalTitle": {
+    "message": "Are you sure?"
+  },
+  "optionsDisagreeModalBody": {
+    "message": "You'll miss out on our smartest extraction tools. You can always change this later in Settings."
+  },
+  "optionsDisagreeModalContinue": {
+    "message": "Continue with Basic Only"
+  },
+  "optionsDisagreeModalEnable": {
+    "message": "Enable Presets"
+  },
+  "popupAdvancedFeaturesDisabled": {
+    "message": "Presets Disabled"
+  },
+  "popupTerms": {
+    "message": "Terms"
+  },
+  "popupPrivacyPolicy": {
+    "message": "Privacy Policy"
+  },
+  "popupSettingsTitle": {
+    "message": "Settings"
+  },
+  "popupSettingsAdvancedFeatures": {
+    "message": "Presets"
+  },
+  "popupSettingsDescription": {
+    "message": "Instant Data Scraper can automatically identify popular data columns and navigation buttons used by others on the same URL, allowing you to bypass manual setup and achieve high-quality results with a single click."
+  },
+  "popupOptOutConfirmTitle": {
+    "message": "Are you sure you want to lose access to Presets?"
+  },
+  "popupOptOutDowngrade": {
+    "message": "Downgrade Anyway"
+  },
+  "popupOptOutKeepFeatures": {
+    "message": "Wait, Keep Presets"
+  },
+  "popupSavedConfigEmpty": {
+    "message": "No presets yet"
+  },
+  "popupSavedConfigPlaceholder": {
+    "message": "Presets"
+  },
+  "popupApply": {
+    "message": "Apply"
+  },
+  "popupEnable": {
+    "message": "Enable"
+  },
+  "popupPresetsInfoTooltipTitlePrefix": {
+    "message": "Scrape smarter with "
+  },
+  "popupPresetsInfoTooltipTitleHighlight": {
+    "message": "Presets"
+  },
+  "popupPresetsInfoTooltipBody1": {
+    "message": "Presets suggest the best columns for the page you're on, based on what other users typically scrape here."
+  },
+  "popupPresetsInfoTooltipBody2": {
+    "message": "We use the URLs you visit to match your current page to the most popular scraping patterns - no page content is read."
+  },
+  "popupOptInTitlePart1": {
+    "message": "Scrape smarter with "
+  },
+  "popupOptInTitlePart2": {
+    "message": "Presets"
+  },
+  "popupOptInSubtitle": {
+    "message": "Presets suggest the best columns for your current page, based on what other users typically scrape here. To do that, we use the URLs you visit to match your page to the most popular scraping patterns. You can opt out any time."
+  },
+  "optInHookTitle": {
+    "message": "Instant Data Scraper"
+  },
+  "optInHookBody": {
+    "message": "Hey! We have new Advanced Smart Features designed to help you scrape pages faster and with better results."
+  },
+  "optInHookButton": {
+    "message": "Check it out"
+  },
+  "popupOptInPrivacyText": {
+    "message": "Instant Data Scraper needs to process the URLs you visit and the information about such URLs (\"Browsing Data\") to provide you with our Presets feature and the queries you run and the search results you receive (\"SERP Data\"). Certain details collected in the Browsing Data and the SERP Data could qualify as sensitive personal information under applicable privacy laws and regulations, and we need your consent to process this data. Since our affiliated companies facilitate some of our features and services, the Browsing Data and SERP Data may be disclosed to these affiliates. Some of our affiliated companies may also use the Browsing Data and SERP Data to create and provide their market intelligence services. These affiliated companies may disclose some of this information to its customers as part of these market intelligence services. By clicking \"Accept\" below you agree to the use of your Browsing Data and SERP Data in this way. You can opt-out of this use of your information at any time, but please note that this may affect your ability to access some of our services."
+  },
+  "popupOptInAgree": {
+    "message": "Agree & enable presets"
+  },
+  "popupOptInDisagree": {
+    "message": "Disagree & use without presets"
+  },
+  "popupOptInFooter": {
+    "message": "{{terms}} & {{privacy}}"
+  },
+  "popupOptInTermsLinkText": {
+    "message": "Terms"
+  },
+  "popupOptInPrivacyLinkText": {
+    "message": "Privacy Policy"
+  },
+  "popupPrivacyUpdateTitle": {
+    "message": "Privacy update:"
+  },
+  "popupPrivacyUpdateBody": {
+    "message": "We updated our privacy policy, just keeping you informed!"
+  },
+  "popupWrongTableTooltipTitle": {
+    "message": "Switch detected table"
+  },
+  "popupWrongTableTooltipBody": {
+    "message": "Click to cycle through all tables and lists on the page until the highlighted selection matches what you want to scrape."
+  },
+  "popupNextButtonTooltipTitle": {
+    "message": "Scrape across multiple pages"
+  },
+  "popupNextButtonTooltipBody": {
+    "message": "Want more than one page of results? Click this, then click the \"Next\" or \"›\" button on the page — we’ll move through pages automatically and collect everything."
+  },
+  "popupSettingsSerpBadgesTitle": {
+    "message": "Show Badges"
+  },
+  "popupSettingsSerpBadgesDescription": {
+    "message": "Instant Data Scraper can highlight compatible and relevant sites while you search on Google, so you know which sites are worth your time."
+  },
+  "serpBadgeTooltip": {
+    "message": "This site works well with Instant Data Scraper"
+  },
+  "serpBadgeInterestTooltip": {
+    "message": "Might be of interest to you"
+  }
+}
