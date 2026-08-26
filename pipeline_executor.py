@@ -86,10 +86,16 @@ def set_active_script(task_id, script_name):
         hist[task_id]["resume_state"]["current_active_script"] = script_name
         save_history(hist)
 
-def check_stop_flag():
+class PauseAndExitError(Exception):
+    pass
 
+def check_stop_flag():
     if os.path.exists(STOP_FLAG):
+        with open(STOP_FLAG, 'r') as f:
+            content = f.read().strip()
         os.remove(STOP_FLAG)
+        if content == "PAUSE_AND_EXIT":
+            return "PAUSE_AND_EXIT"
         return True
     return False
 
@@ -112,12 +118,15 @@ def run_script(script_name, task_id):
     process = subprocess.Popen([sys.executable, script_path])
     
     while process.poll() is None:
-        if check_stop_flag():
+        stop_status = check_stop_flag()
+        if stop_status:
             print(f"\n[!] STOP FLAG DETECTED! Terminating {script_name} immediately...")
             try:
                 subprocess.call(['taskkill', '/F', '/T', '/PID', str(process.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception:
                 process.kill()
+            if stop_status == "PAUSE_AND_EXIT":
+                return "PAUSE_AND_EXIT"
             return "cancelled"
         time.sleep(1)
         
@@ -150,7 +159,7 @@ def run_executor():
         task_idx = -1
         
         for i, t in enumerate(tasks):
-            if t.get('status') == 'pending':
+            if t.get('status') in ['pending', 'paused']:
                 pending_task = t
                 task_idx = i
                 break
@@ -177,49 +186,63 @@ def run_executor():
         success = True
         was_cancelled = False
         
+        was_paused_and_exit = False
+        
         # Determine Pipeline Execution
         try:
             initialize_history(task_id, mode)
             
             # Step 1 & 2: ALWAYS run Google Maps Scraper and Aggregator first!
             res = run_script('lead.py', task_id)
-            if res == "cancelled": raise InterruptedError()
+            if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+            elif res == "cancelled": raise InterruptedError()
             elif not res: raise Exception("lead.py failed")
             
             res = run_script('aggregate.py', task_id)
-            if res == "cancelled": raise InterruptedError()
+            if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+            elif res == "cancelled": raise InterruptedError()
             elif not res: raise Exception("aggregate.py failed")
             
             # Step 3: Run the requested scrapers based on mode
             if mode == 'phones':
                 res = run_script('find_phone.py', task_id)
-                if res == "cancelled": raise InterruptedError()
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("find_phone.py failed")
                 
             elif mode == 'emails':
                 res = run_script('pipeline.py', task_id)
-                if res == "cancelled": raise InterruptedError()
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("pipeline.py failed")
                 
                 res = run_script('cleaner.py', task_id)
-                if res == "cancelled": raise InterruptedError()
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("cleaner.py failed")
                 
             elif mode == 'both':
                 res = run_script('pipeline.py', task_id)
-                if res == "cancelled": raise InterruptedError()
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("pipeline.py failed")
                 
                 res = run_script('cleaner.py', task_id)
-                if res == "cancelled": raise InterruptedError()
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("cleaner.py failed")
                 
                 res = run_script('find_phone.py', task_id)
-                if res == "cancelled": raise InterruptedError()
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("find_phone.py failed")
                 
+        except PauseAndExitError:
+            print(f"\n[-] Task {task_id} was paused! Archiving and exiting executor...")
+            success = False
+            was_paused_and_exit = True
         except InterruptedError:
-            print(f"\n[-] Task {task_id} was paused! Transitioning to the next task in the queue...")
+            print(f"\n[-] Task {task_id} was cancelled! Transitioning to the next task in the queue...")
             success = False
             was_cancelled = True
         except Exception as e:
@@ -242,7 +265,15 @@ def run_executor():
                 mark_stage_completed(task_id, "archiving")
                 tasks.pop(current_idx)
             else:
-                if was_cancelled:
+                if was_paused_and_exit:
+                    if current_idx != -1:
+                        tasks[current_idx]['status'] = 'paused'
+                    import file_manager
+                    file_manager.archive_task(pending_task, is_paused=True)
+                    save_tasks(tasks)
+                    print("\n[+] Exiting pipeline_executor.py gracefully.")
+                    sys.exit(0)
+                elif was_cancelled:
                     # Make sure it's marked as paused if it wasn't already by main.py
                     if current_idx != -1:
                         tasks[current_idx]['status'] = 'paused'
