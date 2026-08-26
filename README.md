@@ -51,5 +51,15 @@ Once your profiles are ready and tasks are added via `main.py`, run this in a se
 python pipeline_executor.py
 ```
 
+## Recommendations
+
+### Handling Chrome Profile Corruption (6-Hour Refresh Cycle)
+Over long scraping sessions, Chrome profiles can sometimes become corrupted, consume excessive memory, or fail to display the Instant Data Scraper properly. To ensure the highest success rate and prevent these issues, we recommend the following **6-Hour Refresh Cycle**:
+
+1. **Pause Pipeline and Archive (`main.py` -> Option 8):** In the middle of a long pipeline (e.g., after 6 hours), select option 8 in `main.py`. This safely halts the current task, archives all progress without data loss, marks the task as paused, and gracefully shuts down the executor.
+2. **Recreate Profiles:** Run `python scraper_core/profile_manager.py`. This will automatically kill any stuck browser processes, wipe the corrupted `ChromeUserData` folders, and provision fresh profiles with the extension set up.
+3. **Resume Pipeline (`main.py` -> Option 9):** Select option 9 to unpause the system.
+4. **Restart Executor:** Run `python pipeline_executor.py`. The executor will detect the paused task, restore its archive, skip already completed stages via `history.json`, and seamlessly resume the scrape with the new profiles.
+
 ## Running an Example Task
 Please check `example_task.md` for a step-by-step walkthrough of starting and running your first task!
