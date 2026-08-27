@@ -92,20 +92,36 @@ def create_and_setup_profile(profile_path: Path):
                 add_btn.click(timeout=5000)
                 print("Clicked 'Add to Chrome'.")
                 
-                print("\nAutomating native Chrome popup using ctypes...")
-                import ctypes
+                print("\nAutomating native Chrome popup...")
+                import platform
+                os_name = platform.system()
                 time.sleep(1.5) # wait for popup to appear
-                # Press Left Arrow (VK_LEFT = 0x25)
-                ctypes.windll.user32.keybd_event(0x25, 0, 0, 0)
-                time.sleep(0.05)
-                ctypes.windll.user32.keybd_event(0x25, 0, 2, 0)
                 
-                time.sleep(0.5)
-                # Press Enter (VK_RETURN = 0x0D)
-                ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)
-                time.sleep(0.05)
-                ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)
-                print("Simulated Left Arrow + Enter.")
+                if os_name == "Windows":
+                    import ctypes
+                    # Press Left Arrow (VK_LEFT = 0x25)
+                    ctypes.windll.user32.keybd_event(0x25, 0, 0, 0)
+                    time.sleep(0.05)
+                    ctypes.windll.user32.keybd_event(0x25, 0, 2, 0)
+                    
+                    time.sleep(0.5)
+                    # Press Enter (VK_RETURN = 0x0D)
+                    ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)
+                    time.sleep(0.05)
+                    ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)
+                    print("Windows: Simulated Left Arrow + Enter.")
+                    
+                elif os_name == "Darwin": # macOS
+                    import subprocess
+                    # Key code 124 = Right Arrow
+                    subprocess.run(['osascript', '-e', 'tell application "System Events" to key code 124'])
+                    time.sleep(0.5)
+                    # Key code 36 = Enter
+                    subprocess.run(['osascript', '-e', 'tell application "System Events" to key code 36'])
+                    print("macOS: Simulated Right Arrow + Enter.")
+                    
+                else:
+                    print(f"Unsupported OS for native automation: {os_name}")
                 
             except Exception as e:
                 print(f"Could not auto-click 'Add to Chrome': {e}")
@@ -164,19 +180,48 @@ def create_and_setup_profile(profile_path: Path):
         
     return True
 
+import argparse
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--auto", type=int, help="Automatically create this many profiles without prompting")
+    parser.add_argument("--limit", type=int, help="Safety limit for the auto profiles")
+    args = parser.parse_args()
+
     print("\n=================================")
     print("      ACTIVE PROFILE MANAGER     ")
     print("=================================")
     
-    while True:
-        try:
-            desired = int(input("\nHow many profiles do you need to create for this session? ").strip())
-            if desired > 0:
-                break
-        except ValueError:
-            print("Please enter a valid number.")
+    if args.auto is not None and args.limit is not None:
+        desired = args.auto
+        safety_limit = args.limit
+        if not (0 <= safety_limit < desired):
+            print(f"Error: Safety limit {safety_limit} must be between 0 and {desired - 1}.")
+            return
+    else:
+        while True:
+            try:
+                desired = int(input("\nHow many profiles do you need to create for this session? ").strip())
+                if desired > 0:
+                    break
+            except ValueError:
+                print("Please enter a valid number.")
+                
+        while True:
+            try:
+                safety_limit = int(input(f"Enter a safety limit (must be strictly less than {desired}): ").strip())
+                if 0 <= safety_limit < desired:
+                    break
+                else:
+                    print(f"Error: Safety limit must be between 0 and {desired - 1}.")
+            except ValueError:
+                print("Please enter a valid number.")
             
+    admin_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'admin')
+    os.makedirs(admin_dir, exist_ok=True)
+    with open(os.path.join(admin_dir, 'safety_limit.json'), 'w') as f:
+        json.dump({"safety_limit": safety_limit, "desired": desired}, f)
+        
     # 1. Kill old scraper browsers so we can delete folders safely
     kill_scraper_browsers()
     time.sleep(2) # Give windows a moment to release locks

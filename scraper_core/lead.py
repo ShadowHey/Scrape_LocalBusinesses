@@ -234,14 +234,24 @@ import csv
 def detect_page_state(page):
     """
     Checks the screen instantly up to 30 seconds to determine the state.
-    Returns: 'list', 'single', 'no_results', or 'timeout' (if crashed/blank).
+    Returns: 'list', 'single', 'no_results', 'captcha', or 'timeout' (if crashed/blank).
     """
     for _ in range(30):
         # 1. List of businesses (has the search result links)
         if page.locator("a.hfpxzc").count() > 0:
             return "list"
             
-        # 2. No Results (Check text in main panel or body)
+        # 2. CAPTCHA detection
+        try:
+            if page.locator('form#captcha-form').count() > 0 or page.locator('iframe[src*="recaptcha"]').count() > 0:
+                return "captcha"
+            body_text = page.locator("body").inner_text()
+            if "unusual traffic from your computer network" in body_text:
+                return "captcha"
+        except Exception:
+            pass
+            
+        # 3. No Results (Check text in main panel or body)
         try:
             panel_text = page.locator("div[role='main']").inner_text() if page.locator("div[role='main']").count() > 0 else page.locator("body").inner_text()
             if "Google Maps can't find" in panel_text or "We could not find anything" in panel_text or "No results found" in panel_text or "Make sure your search is spelled correctly" in panel_text:
@@ -249,7 +259,7 @@ def detect_page_state(page):
         except Exception:
             pass
             
-        # 3. Single Result Profile (has h1 title but no list)
+        # 4. Single Result Profile (has h1 title but no list)
         if page.locator("h1.DUwDvf").count() > 0:
             return "single"
             
@@ -302,6 +312,7 @@ def worker(profile_idx: int, task_queue):
             
         tasks_since_restart = 0
             
+        captcha_strikes = 0
         try:
             while True:
                 pause_flag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin', 'PAUSE_FLAG')
@@ -359,6 +370,9 @@ def worker(profile_idx: int, task_queue):
                     state = detect_page_state(maps_page)
                     print(f"[Profile {profile_idx}] State: {state}")
                     
+                    if state in ["no_results", "single", "list"]:
+                        captcha_strikes = 0
+                        
                     if state == "no_results":
                         print(f"  -> Skipping '{query}' (0 results)")
                         tasks_since_restart += 1
@@ -380,6 +394,9 @@ def worker(profile_idx: int, task_queue):
                         if success:
                             print(f"  -> Extracted to {raw_csv_path.name}")
                             tasks_since_restart += 1
+                            
+                    elif state == "captcha":
+                        raise Exception("CAPTCHA_DETECTED")
                     else:
                         raise Exception("Timeout waiting for map elements (Possible Bot Challenge or Crash)")
                         
@@ -390,12 +407,41 @@ def worker(profile_idx: int, task_queue):
                         print(f"  Retrying '{query}' after network restored...")
                         task_queue.put((term, zip_code))
                     else:
-                        print(f"  [Profile {profile_idx}] Browser crashed or timed out. Initiating Reactive Recovery...")
+                        captcha_strikes += 1
+                        error_type = "CAPTCHA" if str(e) == "CAPTCHA_DETECTED" else "Timeout/Crash"
+                        print(f"  [Profile {profile_idx}] {error_type} strike {captcha_strikes}/3. Initiating restart...")
+                        task_queue.put((term, zip_code))
                         try: context.close()
                         except: pass
                         
-                        task_queue.put((term, zip_code))
-                        
+                        if captcha_strikes >= 3:
+                            print(f"[Profile {profile_idx}] BURNED (3 consecutive {error_type} errors). Removing from healthy profiles.")
+                            admin_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin')
+                            healthy_json = os.path.join(admin_dir, 'health_profiles.json')
+                            safety_limit_json = os.path.join(admin_dir, 'safety_limit.json')
+                            
+                            try:
+                                with open(healthy_json, 'r') as f: paths = json.load(f)
+                                paths = [p for p in paths if f"ChromeUserData{profile_idx}" not in p]
+                                with open(healthy_json, 'w') as f: json.dump(paths, f)
+                                remaining = len(paths)
+                            except:
+                                remaining = 0
+                                
+                            try:
+                                with open(safety_limit_json, 'r') as f: safety_limit = json.load(f).get("safety_limit", 1)
+                            except:
+                                safety_limit = 1
+                                
+                            if remaining < safety_limit:
+                                print(f"\nCRITICAL: Healthy profiles dropped below safety limit ({remaining} < {safety_limit}).")
+                                print("Task paused and archived. Please run profile_manager.py to generate new profiles before resuming!")
+                                with open(os.path.join(admin_dir, 'PIPELINE_PAUSED'), 'w') as f: f.write("PAUSED")
+                                with open(os.path.join(admin_dir, 'STOP_FLAG'), 'w') as f: f.write("PAUSE_AND_WAIT")
+                                with open(os.path.join(admin_dir, 'NEEDS_PROFILES_FLAG'), 'w') as f: f.write("NEEDS_PROFILES")
+                                
+                            break
+                            
                         try:
                             context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
                             tasks_since_restart = 0

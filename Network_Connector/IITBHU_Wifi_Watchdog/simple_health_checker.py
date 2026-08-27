@@ -20,8 +20,9 @@ def run_health_checker():
             time.sleep(10)
         else:
             logging.warning("Internet disconnected! Running watchdog script to reconnect...")
-            # Run the existing script to force a connection to the IIT BHU Wi-Fi
-            subprocess.run(["python", "main.py", "--force-login"])
+            # Run the existing script to force a connection to the IIT BHU Wi-Fi using the exact same python executable
+            import sys
+            subprocess.run([sys.executable, "main.py", "--force-login"])
             
             logging.info("Reconnect attempt finished. Resuming health checks in 5 seconds...")
             time.sleep(5)

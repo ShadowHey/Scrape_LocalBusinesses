@@ -32,14 +32,12 @@ def show_menu():
     print("1. Add a New Task")
     print("2. View Queue / Tasks")
     print("3. Reorder Pending Tasks")
-    print("4. Cancel / Delete a Task")
-    print("5. Resume a Completed Task")
-    print("6. Manage Healthy Profiles")
+    print("4. Delete a Task")
+    print("5. Pause Pipeline and Archive")
+    print("6. Resume Pipeline from Paused")
     print("7. Exit")
-    print("8. Pause Pipeline and Archive")
-    print("9. Resume Pipeline from Paused")
     print("="*40)
-    return input("Select an option [1-9]: ").strip()
+    return input("Select an option [1-7]: ").strip()
 
 def parse_list_input(prompt_text):
     print(f"\n{prompt_text}")
@@ -217,20 +215,18 @@ def reorder_queue():
     except Exception as e:
         print(f"Error parsing order: {e}")
 
-def cancel_task():
+def delete_task():
     view_queue()
     tasks = load_json(TASKS_JSON, list)
     if not tasks: return
     
-    idx_str = input("\nEnter the index or ID of the task to cancel/delete (or type 'cancel' to abort): ").strip()
+    idx_str = input("\nEnter the index or ID of the task to delete (or type 'cancel' to abort): ").strip()
     if idx_str.lower() == 'cancel': return
     
     target_idx = -1
-    # Try by index
     if idx_str.isdigit() and int(idx_str) < len(tasks):
         target_idx = int(idx_str)
     else:
-        # Try by ID
         for i, t in enumerate(tasks):
             if t['id'] == idx_str:
                 target_idx = i
@@ -242,35 +238,18 @@ def cancel_task():
         
     t = tasks[target_idx]
     if t.get('status') == 'running':
-        print(f"[!] Cancelling currently running task {t['id']}...")
-        # Add logic to gracefully stop the background executor via a flag file
+        print(f"[!] Deleting currently running task {t['id']}...")
         stop_flag = os.path.join(ADMIN_DIR, 'STOP_FLAG')
         with open(stop_flag, 'w') as f:
             f.write("STOP")
             
-        pause_flag = os.path.join(ADMIN_DIR, 'PIPELINE_PAUSED')
-        with open(pause_flag, 'w') as f:
-            f.write("PAUSED")
-        
-        # For now, just move it to the end as 'paused'
-        t['status'] = 'paused'
         tasks.pop(target_idx)
-        tasks.append(t)
-        print("Task set to 'paused' and moved to the end of the queue. Pipeline execution will halt shortly.")
+        print("Task deleted from queue. The executor will stop working on it shortly and move on.")
     else:
-        # Delete from queue
         tasks.pop(target_idx)
         print("Task deleted from queue.")
         
     save_json(TASKS_JSON, tasks)
-
-def resume_pipeline():
-    pause_flag = os.path.join(ADMIN_DIR, 'PIPELINE_PAUSED')
-    if os.path.exists(pause_flag):
-        os.remove(pause_flag)
-        print("\n[+] PIPELINE_PAUSED flag removed. The executor will now wake up and process the queue.")
-    else:
-        print("\n[i] The pipeline is not currently paused.")
 
 def pause_and_archive_pipeline():
     tasks = load_json(TASKS_JSON, list)
@@ -327,21 +306,14 @@ def main():
         elif choice == '3':
             reorder_queue()
         elif choice == '4':
-            cancel_task()
+            delete_task()
         elif choice == '5':
-            resume_pipeline()
+            pause_and_archive_pipeline()
         elif choice == '6':
-            import sys
-            sys.path.append(os.path.join(BASE_DIR, 'scraper_core'))
-            import profile_manager
-            profile_manager.main()
+            resume_paused_pipeline()
         elif choice == '7':
             print("Exiting...")
             break
-        elif choice == '8':
-            pause_and_archive_pipeline()
-        elif choice == '9':
-            resume_paused_pipeline()
         else:
             print("Invalid option.")
 

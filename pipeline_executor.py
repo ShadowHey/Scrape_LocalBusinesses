@@ -89,6 +89,9 @@ def set_active_script(task_id, script_name):
 class PauseAndExitError(Exception):
     pass
 
+class PauseAndWaitError(Exception):
+    pass
+
 def check_stop_flag():
     if os.path.exists(STOP_FLAG):
         with open(STOP_FLAG, 'r') as f:
@@ -96,6 +99,8 @@ def check_stop_flag():
         os.remove(STOP_FLAG)
         if content == "PAUSE_AND_EXIT":
             return "PAUSE_AND_EXIT"
+        elif content == "PAUSE_AND_WAIT":
+            return "PAUSE_AND_WAIT"
         return True
     return False
 
@@ -127,6 +132,8 @@ def run_script(script_name, task_id):
                 process.kill()
             if stop_status == "PAUSE_AND_EXIT":
                 return "PAUSE_AND_EXIT"
+            elif stop_status == "PAUSE_AND_WAIT":
+                return "PAUSE_AND_WAIT"
             return "cancelled"
         time.sleep(1)
         
@@ -187,6 +194,7 @@ def run_executor():
         was_cancelled = False
         
         was_paused_and_exit = False
+        was_paused_and_wait = False
         
         # Determine Pipeline Execution
         try:
@@ -195,11 +203,13 @@ def run_executor():
             # Step 1 & 2: ALWAYS run Google Maps Scraper and Aggregator first!
             res = run_script('lead.py', task_id)
             if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+            elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
             elif res == "cancelled": raise InterruptedError()
             elif not res: raise Exception("lead.py failed")
             
             res = run_script('aggregate.py', task_id)
             if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+            elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
             elif res == "cancelled": raise InterruptedError()
             elif not res: raise Exception("aggregate.py failed")
             
@@ -207,33 +217,39 @@ def run_executor():
             if mode == 'phones':
                 res = run_script('find_phone.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("find_phone.py failed")
                 
             elif mode == 'emails':
                 res = run_script('pipeline.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("pipeline.py failed")
                 
                 res = run_script('cleaner.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("cleaner.py failed")
                 
             elif mode == 'both':
                 res = run_script('pipeline.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("pipeline.py failed")
                 
                 res = run_script('cleaner.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("cleaner.py failed")
                 
                 res = run_script('find_phone.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("find_phone.py failed")
                 
@@ -241,10 +257,18 @@ def run_executor():
             print(f"\n[-] Task {task_id} was paused! Archiving and exiting executor...")
             success = False
             was_paused_and_exit = True
+        except PauseAndWaitError:
+            print(f"\n[-] Task {task_id} was paused! Archiving and waiting for auto-resume...")
+            success = False
+            was_paused_and_wait = True
         except InterruptedError:
             print(f"\n[-] Task {task_id} was cancelled! Transitioning to the next task in the queue...")
             success = False
             was_cancelled = True
+        except KeyboardInterrupt:
+            print(f"\n[!] Ctrl+C detected! Archiving stranded task {task_id} safely before shutting down...")
+            success = False
+            was_paused_and_exit = True
         except Exception as e:
             print(f"\n[!] Task execution interrupted due to error: {e}")
             success = False
@@ -253,38 +277,50 @@ def run_executor():
         tasks = load_tasks()
         current_idx = next((i for i, t in enumerate(tasks) if t['id'] == task_id), -1)
         
-        if current_idx != -1:
-            if success:
-                print(f"[+] Task {task_id} completed successfully!")
+        if success:
+            print(f"[+] Task {task_id} completed successfully!")
+            if current_idx != -1:
                 tasks[current_idx]['status'] = 'completed'
                 with open(TASK_IDS_TXT, 'a') as f:
                     f.write(f"{task_id} | {pending_task['locality']} | {datetime.now().isoformat()}\n")
-                
-                import file_manager
-                file_manager.archive_task(pending_task)
-                mark_stage_completed(task_id, "archiving")
                 tasks.pop(current_idx)
+            
+            import file_manager
+            file_manager.archive_task(pending_task)
+            mark_stage_completed(task_id, "archiving")
+        else:
+            if was_paused_and_exit:
+                if current_idx != -1:
+                    tasks[current_idx]['status'] = 'paused'
+                import file_manager
+                file_manager.archive_task(pending_task, is_paused=True)
+                save_tasks(tasks)
+                print("\n[+] Exiting pipeline_executor.py gracefully.")
+                sys.exit(0)
+            elif was_paused_and_wait:
+                if current_idx != -1:
+                    tasks[current_idx]['status'] = 'paused'
+                import file_manager
+                file_manager.archive_task(pending_task, is_paused=True)
+                save_tasks(tasks)
+                continue
+            elif was_cancelled:
+                # Make sure it's marked as paused if it wasn't already by main.py
+                if current_idx != -1:
+                    tasks[current_idx]['status'] = 'paused'
+                import file_manager
+                file_manager.archive_task(pending_task, is_paused=True)
             else:
-                if was_paused_and_exit:
-                    if current_idx != -1:
-                        tasks[current_idx]['status'] = 'paused'
-                    import file_manager
-                    file_manager.archive_task(pending_task, is_paused=True)
-                    save_tasks(tasks)
-                    print("\n[+] Exiting pipeline_executor.py gracefully.")
-                    sys.exit(0)
-                elif was_cancelled:
-                    # Make sure it's marked as paused if it wasn't already by main.py
-                    if current_idx != -1:
-                        tasks[current_idx]['status'] = 'paused'
-                    import file_manager
-                    file_manager.archive_task(pending_task, is_paused=True)
-                elif current_idx != -1 and tasks[current_idx]['status'] == 'running':
+                if current_idx != -1 and tasks[current_idx]['status'] == 'running':
                     tasks[current_idx]['status'] = 'error'
-                    import file_manager
-                    file_manager.archive_task(pending_task, is_error=True)
-                    
-            save_tasks(tasks)
+                import file_manager
+                file_manager.archive_task(pending_task, is_error=True)
+                
+        save_tasks(tasks)
 
 if __name__ == '__main__':
-    run_executor()
+    try:
+        run_executor()
+    except KeyboardInterrupt:
+        print("\n[!] Ctrl+C detected. Shutting down executor safely.")
+        sys.exit(0)
