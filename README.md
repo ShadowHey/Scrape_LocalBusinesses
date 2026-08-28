@@ -1,12 +1,9 @@
 # Firecrawl Pipeline Manager
 
-## 🚀 Version_27Aug2026 Updates
-This massive update drastically improves system stability, performance, and automation capabilities:
-- **Master Automator (`automator.py`)**: A completely new standalone script that acts as an invisible background watcher. It monitors your pipeline for profile shortages and automatically replenishes them without any user intervention.
-- **Smart Safety Limits**: `profile_manager.py` now supports automated safety limits. If your healthy profiles drop below this limit, the pipeline will seamlessly pause, trigger the Automator, and resume instantly once profiles are replenished.
-- **Advanced CAPTCHA Resilience**: `lead.py` now detects Google CAPTCHAs and "unusual traffic" blocks. It operates on a smart "3-Strike" system, aggressively restarting the browser and burning profiles only when definitively blocked, protecting your IP address.
-- **Lightning-Fast Multi-Profile Phone Scraper**: `find_phone.py` has been entirely rewritten to use the same robust multiprocessing architecture as `lead.py`. It now loads your map links concurrently using all available healthy profiles in headless mode, transforming a 2-hour sequential scrape into a 10-minute parallel run.
-- **Native Crash Shields**: `pipeline_executor.py` now has native `Ctrl+C` interrupt shields to safely archive your stranded tasks and exit gracefully without messy Python tracebacks or data loss.
+## 🚀 Latest Version Updates
+This update introduces robust auto-recovery and repository cleanup:
+- **Auto-Resume Interrupted Tasks**: `pipeline_executor.py` has been upgraded to automatically detect and resume tasks that were abruptly interrupted (e.g., due to a sudden power cut). It intelligently scans your working directory to validate completed pipeline stages, updates its history, and seamlessly picks up exactly where it left off without any manual intervention.
+- **Repository Cleanup**: The `IITBHU_Wifi_Watchdog` module has been completely untracked from Git and added to `.gitignore`, preventing unnecessary bloat in the repository while keeping your local files safe.
 
 ---
 

@@ -1,4 +1,4 @@
-__pycache__/
+﻿__pycache__/
 *.py[cod]
 *.class
 *.so
@@ -35,3 +35,6 @@ Thumbs.db
 ChromeUserData*
 scraper_core/ChromeUserData*
 
+# Watchdog
+Network_Connector/IITBHU_Wifi_Watchdog/
+IITBHU_Wifi_Watchdog/

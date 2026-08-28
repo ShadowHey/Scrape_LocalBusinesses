@@ -86,6 +86,32 @@ def set_active_script(task_id, script_name):
         hist[task_id]["resume_state"]["current_active_script"] = script_name
         save_history(hist)
 
+def validate_pipeline_stage_from_files(task_id, mode):
+    hist = load_history()
+    if task_id not in hist:
+        return
+
+    stages = hist[task_id]["pipeline_stages"]
+    
+    # Check if we can safely assume stages completed based on final output files
+    # final_results/aggregated_leads.csv implies aggregate.py finished
+    if os.path.exists(os.path.join(BASE_DIR, 'final_results', 'aggregated_leads.csv')):
+        if not stages.get("lead.py_completed"):
+            print("[*] Found aggregated_leads.csv, marking lead.py as completed.")
+            stages["lead.py_completed"] = True
+            
+    # FinalEmails.csv implies cleaner.py finished, which implies pipeline.py finished
+    if os.path.exists(os.path.join(BASE_DIR, 'FinalEmails.csv')):
+        if not stages.get("pipeline.py_completed") and mode in ['emails', 'both']:
+            print("[*] Found FinalEmails.csv, marking pipeline.py as completed.")
+            stages["pipeline.py_completed"] = True
+        if not stages.get("cleaner.py_completed") and mode in ['emails', 'both']:
+            print("[*] Found FinalEmails.csv, marking cleaner.py as completed.")
+            stages["cleaner.py_completed"] = True
+
+    hist[task_id]["pipeline_stages"] = stages
+    save_history(hist)
+
 class PauseAndExitError(Exception):
     pass
 
@@ -166,16 +192,26 @@ def run_executor():
         task_idx = -1
         
         for i, t in enumerate(tasks):
-            if t.get('status') in ['pending', 'paused']:
+            if t.get('status') == 'running':
                 pending_task = t
                 task_idx = i
+                print(f"\\n[*] Found an INTERRUPTED running task: {pending_task['id']}. Resuming it...")
                 break
+                
+        # Fallback to pending or paused if no running task is found
+        if not pending_task:
+            for i, t in enumerate(tasks):
+                if t.get('status') in ['pending', 'paused']:
+                    pending_task = t
+                    task_idx = i
+                    break
                 
         if not pending_task:
             time.sleep(5)
             continue
             
-        print(f"\n[*] Found pending task: {pending_task['id']}")
+        if pending_task.get('status') != 'running':
+            print(f"\\n[*] Found pending task: {pending_task['id']}")
         
         import file_manager
         file_manager.restore_task(pending_task)
@@ -199,6 +235,7 @@ def run_executor():
         # Determine Pipeline Execution
         try:
             initialize_history(task_id, mode)
+            validate_pipeline_stage_from_files(task_id, mode)
             
             # Step 1 & 2: ALWAYS run Google Maps Scraper and Aggregator first!
             res = run_script('lead.py', task_id)
