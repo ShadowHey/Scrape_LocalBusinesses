@@ -101,13 +101,16 @@ def parse_set_input(prompt_text):
 def add_task():
     print("\n--- Add New Task ---")
     
-    # 1. Search Terms
+    # 1. Initial Wording
+    initial_wording = input("Enter Initial Wording for Segments (e.g., groupbookings_ or esa_): ").strip()
+    
+    # 2. Search Terms
     search_terms = parse_list_input("Enter Search Terms (e.g. Public School):")
     if not search_terms:
         print("Error: Search terms cannot be empty.")
         return
         
-    # 2. Locality
+    # 3. Locality
     locality = input("\nEnter Locality Label (e.g. Texas, Studio6_Fort_Myers): ").strip()
     
     # 3. Zip Codes
@@ -157,6 +160,7 @@ def add_task():
     task = {
         "id": task_id,
         "created_at": datetime.now().isoformat(),
+        "initial_wording": initial_wording,
         "search_terms": search_terms,
         "locality": locality,
         "zip_codes": zip_codes,

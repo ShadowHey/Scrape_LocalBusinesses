@@ -61,6 +61,7 @@ def initialize_history(task_id, mode):
         if mode in ['emails', 'both']:
             base["pipeline_stages"]["pipeline.py_completed"] = False
             base["pipeline_stages"]["cleaner.py_completed"] = False
+            base["pipeline_stages"]["segment_formatter.py_completed"] = False
             base["metrics"]["total_leads_scraped_for_emails"] = 0
             base["metrics"]["total_emails_found"] = 0
             base["resume_state"]["last_processed_lead_index_emails"] = 0
@@ -217,6 +218,10 @@ def run_executor():
         file_manager.restore_task(pending_task)
         
         # Mark as running
+        if 'started_at' not in tasks[task_idx]:
+            tasks[task_idx]['started_at'] = datetime.now().isoformat()
+            pending_task['started_at'] = tasks[task_idx]['started_at']
+            
         tasks[task_idx]['status'] = 'running'
         save_tasks(tasks)
         
@@ -271,6 +276,12 @@ def run_executor():
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("cleaner.py failed")
                 
+                res = run_script('segment_formatter.py', task_id)
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
+                elif res == "cancelled": raise InterruptedError()
+                elif not res: raise Exception("segment_formatter.py failed")
+                
             elif mode == 'both':
                 res = run_script('pipeline.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
@@ -283,6 +294,12 @@ def run_executor():
                 elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
                 elif res == "cancelled": raise InterruptedError()
                 elif not res: raise Exception("cleaner.py failed")
+                
+                res = run_script('segment_formatter.py', task_id)
+                if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
+                elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
+                elif res == "cancelled": raise InterruptedError()
+                elif not res: raise Exception("segment_formatter.py failed")
                 
                 res = run_script('find_phone.py', task_id)
                 if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
