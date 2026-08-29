@@ -1,21 +1,22 @@
-﻿# Firecrawl Pipeline Manager
+# Firecrawl Pipeline Manager
 
-## 🚀 Latest Version Updates
+## ?? Latest Version Updates
 This update introduces robust auto-recovery, advanced email formatting, and an intelligent self-healing profile system:
 - **Auto-Resume Interrupted Tasks**: pipeline_executor.py has been upgraded to automatically detect and resume tasks that were abruptly interrupted (e.g., due to a sudden power cut). It intelligently scans your working directory to validate completed pipeline stages and seamlessly picks up where it left off.
 - **Repository Cleanup**: The IITBHU_Wifi_Watchdog module has been completely untracked from Git and added to .gitignore, preventing unnecessary bloat in the repository.
 - **Dual-Stage Email Segmentation**: main.py now prompts for an *Initial Wording* segment (e.g. groupbookings_). The newly added segment_formatter.py script automatically runs at the end of the pipeline, performing rigorous email deduplication/cleaning to output raw emails to pre_segment_csvs/, and then builds the precise uploadable format with structured IDs directly into uploadable_csvs/.
-- **Self-Healing Profile Automator**: utomator.py has been completely rewritten into an active background watchdog. It polls your health_profiles.json every 2.5 minutes, calculates profile burns against your safety limits, gracefully pauses the pipeline if needed, regenerates fresh profiles under the hood, and instantly resumes the pipeline—creating a flawless infinite loop!
+- **Self-Healing Profile Automator**: utomator.py has been completely rewritten into an active background watchdog. It polls your health_profiles.json every 2.5 minutes, calculates profile burns against your safety limits, gracefully pauses the pipeline if needed, regenerates fresh profiles under the hood, and instantly resumes the pipeline�creating a flawless infinite loop!
 
 ---
 
 Welcome to the Firecrawl Pipeline Manager! This tool automates the process of finding local business leads via Google Maps, scraping their websites for emails, and extracting their phone numbers.
 
-## 🛠 How to Set Up the Project on Your Computer
+## ?? How to Set Up the Project on Your Computer
 
 1. **Install Python**: Ensure you have Python 3.8+ installed on your system.
 2. **Clone the Repository**: Download or clone this repository to your local machine.
-3. **Install Requirements**: Install the required Python libraries. You can refer to equirements.md for a complete list. Run the following command in your terminal:
+3. **Install Requirements**: Install the required Python libraries. You can refer to 
+equirements.md for a complete list. Run the following command in your terminal:
    `ash
    pip install pandas playwright beautifulsoup4 requests
    `
@@ -24,12 +25,12 @@ Welcome to the Firecrawl Pipeline Manager! This tool automates the process of fi
    playwright install chromium
    `
 
-## 🖥 The Preferred Execution Flow & Terminal Layout
+## ?? The Preferred Execution Flow & Terminal Layout
 
 To ensure maximum efficiency and visibility, the system is designed to be run across 4 split terminals simultaneously. 
 
 ### Recommended Visual Layout
-![Terminal Layout](/C:/Users/DhruvBisht/.gemini/antigravity/brain/59708d34-d90a-47cc-a4a2-313bfdcf6973/.user_uploaded/media_1787970799860.png)
+![Terminal Layout](images/terminal_layout.png)
 *This is exactly how it must look when running successfully.*
 
 - **Top Left Terminal (main.py)**: The central hub for creating, managing, and viewing tasks in the queue. 
@@ -69,7 +70,7 @@ For the very first time you use the tool, or every time you relaunch all the pro
 
 ---
 
-## ⚙️ Core Scripts Reference
+## ?? Core Scripts Reference
 
 ### main.py
 **Job:** Interactive Task Scheduler & Pipeline Manager.
@@ -94,7 +95,7 @@ For the very first time you use the tool, or every time you relaunch all the pro
 - Generates authenticated Google Chrome profiles for Playwright.
 - Can be run manually for setup, or automatically under-the-hood by utomator.py to replenish burnt profiles mid-scrape.
 
-## 💡 Best Practices & Recommendations
+## ?? Best Practices & Recommendations
 
 ### Handling Chrome Profile Corruption (6-Hour Refresh Cycle)
 Over long scraping sessions, Chrome profiles can sometimes become corrupted or consume excessive memory. To ensure the highest success rate, we recommend a **6-Hour Refresh Cycle**:
