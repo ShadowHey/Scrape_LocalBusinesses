@@ -16,7 +16,10 @@ def load_json(filepath, default_val=list):
     if os.path.exists(filepath):
         with open(filepath, 'r') as f:
             try:
-                return json.load(f)
+                data = json.load(f)
+                if default_val == list and not isinstance(data, list):
+                    return [data]
+                return data
             except json.JSONDecodeError:
                 return default_val()
     return default_val()

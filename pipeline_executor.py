@@ -17,7 +17,10 @@ def load_tasks():
     if os.path.exists(TASKS_JSON):
         with open(TASKS_JSON, 'r') as f:
             try:
-                return json.load(f)
+                data = json.load(f)
+                if not isinstance(data, list):
+                    return [data]
+                return data
             except json.JSONDecodeError:
                 return []
     return []

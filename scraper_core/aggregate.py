@@ -138,7 +138,7 @@ def aggregate_temp_csvs():
         print(f"Warning: Could not update history metrics: {e}")
     # ---------------------------
 
-    print(f"\n✅ Aggregation Complete!")
+    print(f"\n[+] Aggregation Complete!")
     print(f"Total rows parsed: {initial_count}")
     print(f"Total unique leads: {final_count}")
     print(f"Saved to: {final_output_file}")
