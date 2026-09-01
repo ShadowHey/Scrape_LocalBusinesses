@@ -98,6 +98,17 @@ def extract_phone_and_name(page, url):
         return "ERROR", err_msg
 
 def launch_browser(p, profile_idx, user_data_dir):
+    try:
+        import subprocess
+        from pathlib import Path
+        safe_path = user_data_dir.replace('\\', '\\\\')
+        ps_cmd = f"Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object {{$_.CommandLine -match '{safe_path}'}} | Invoke-CimMethod -MethodName Terminate"
+        subprocess.run(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
+        lock_file = Path(user_data_dir) / "SingletonLock"
+        if lock_file.exists():
+            try: lock_file.unlink()
+            except: pass
+    except: pass
     context = p.chromium.launch_persistent_context(
         user_data_dir=user_data_dir,
         channel="chrome",
@@ -117,6 +128,34 @@ def launch_browser(p, profile_idx, user_data_dir):
     page = context.new_page()
     return context, page
 
+
+def remove_profile_from_health(profile_idx, reason=""):
+    import json, os
+    print(f"[Profile {profile_idx}] BURNED ({reason}). Removing from healthy profiles.")
+    admin_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin')
+    healthy_json = os.path.join(admin_dir, 'health_profiles.json')
+    safety_limit_json = os.path.join(admin_dir, 'safety_limit.json')
+    
+    try:
+        with open(healthy_json, 'r') as f: paths = json.load(f)
+        paths = [p for p in paths if f"ChromeUserData{profile_idx}" not in p]
+        with open(healthy_json, 'w') as f: json.dump(paths, f)
+        remaining = len(paths)
+    except:
+        remaining = 0
+        
+    try:
+        with open(safety_limit_json, 'r') as f: safety_limit = json.load(f).get("safety_limit", 1)
+    except:
+        safety_limit = 1
+        
+    if remaining < safety_limit:
+        print(f"\\nCRITICAL: Healthy profiles dropped below safety limit ({remaining} < {safety_limit}).")
+        print("Task paused and archived. Please run profile_manager.py to generate new profiles before resuming!")
+        with open(os.path.join(admin_dir, 'PIPELINE_PAUSED'), 'w') as f: f.write("PAUSED")
+        with open(os.path.join(admin_dir, 'STOP_FLAG'), 'w') as f: f.write("PAUSE_AND_WAIT")
+        with open(os.path.join(admin_dir, 'NEEDS_PROFILES_FLAG'), 'w') as f: f.write("NEEDS_PROFILES")
+
 def worker(profile_idx, task_queue, write_lock):
     print(f"\n[Profile {profile_idx}] Starting phone extraction worker.")
     
@@ -130,12 +169,38 @@ def worker(profile_idx, task_queue, write_lock):
     with sync_playwright() as p:
         try:
             context, page = launch_browser(p, profile_idx, USER_DATA_DIR)
+            context_ref[0] = context
         except Exception as e:
             print(f"[Profile {profile_idx}] Fatal error launching browser: {e}")
             return
             
         tasks_since_restart = 0
-        captcha_strikes = 0
+        failure_strikes = 0
+        
+        start_time_ref = [None]
+        context_ref = [None]
+        
+        def task_watchdog():
+            import time
+            while True:
+                try:
+                    st = start_time_ref[0]
+                    ctx = context_ref[0]
+                    if st is not None and ctx is not None:
+                        if time.time() - st > 30:
+                            print(f"\n[Profile {profile_idx} Watchdog] Task exceeded 30 seconds! Force closing context...")
+                            try:
+                                ctx.close()
+                            except:
+                                pass
+                            start_time_ref[0] = None
+                except Exception:
+                    pass
+                time.sleep(1)
+                
+        import threading
+        watchdog_thread = threading.Thread(target=task_watchdog, daemon=True)
+        watchdog_thread.start()
         
         try:
             while True:
@@ -148,6 +213,7 @@ def worker(profile_idx, task_queue, write_lock):
                     while os.path.exists(pause_flag_path):
                         time.sleep(2)
                     context, page = launch_browser(p, profile_idx, USER_DATA_DIR)
+                    context_ref[0] = context
                     tasks_since_restart = 0
 
                 try:
@@ -162,11 +228,14 @@ def worker(profile_idx, task_queue, write_lock):
                     except: pass
                     try:
                         context, page = launch_browser(p, profile_idx, USER_DATA_DIR)
+                        context_ref[0] = context
                         tasks_since_restart = 0
                     except Exception as e:
                         task_queue.put(link)
+                        remove_profile_from_health(profile_idx, f"Initial/Restart launch failed: {e}")
                         break
 
+                start_time_ref[0] = time.time()
                 while True:
                     name, phone = extract_phone_and_name(page, link)
                     if name == "NETWORK_ERROR":
@@ -177,45 +246,30 @@ def worker(profile_idx, task_queue, write_lock):
                         continue
                     break
                     
+                start_time_ref[0] = None
                 if name in ["CAPTCHA", "TIMEOUT", "ERROR"]:
                     error_type = name
-                    captcha_strikes += 1
-                    print(f"  [Profile {profile_idx}] {error_type} strike {captcha_strikes}/3 on {link}. Restarting...")
+                    failure_strikes += 1
+                    print(f"  [Profile {profile_idx}] {error_type} strike {failure_strikes}/3 on {link}. Restarting...")
                     task_queue.put(link)
                     try: context.close()
                     except: pass
                     
-                    if captcha_strikes >= 3:
-                        print(f"[Profile {profile_idx}] BURNED (3 {error_type} errors). Removing from healthy profiles.")
-                        healthy_json = os.path.join(ADMIN_DIR, 'health_profiles.json')
-                        safety_limit_json = os.path.join(ADMIN_DIR, 'safety_limit.json')
-                        
-                        try:
-                            with open(healthy_json, 'r') as f: paths = json.load(f)
-                            paths = [pt for pt in paths if f"ChromeUserData{profile_idx}" not in pt]
-                            with open(healthy_json, 'w') as f: json.dump(paths, f)
-                            remaining = len(paths)
-                        except: remaining = 0
-                            
-                        try:
-                            with open(safety_limit_json, 'r') as f: safety_limit = json.load(f).get("safety_limit", 1)
-                        except: safety_limit = 1
-                            
-                        if remaining < safety_limit:
-                            print(f"\nCRITICAL: Healthy profiles dropped below safety limit ({remaining} < {safety_limit}).")
-                            with open(os.path.join(ADMIN_DIR, 'PIPELINE_PAUSED'), 'w') as f: f.write("PAUSED")
-                            with open(os.path.join(ADMIN_DIR, 'STOP_FLAG'), 'w') as f: f.write("PAUSE_AND_WAIT")
-                            with open(os.path.join(ADMIN_DIR, 'NEEDS_PROFILES_FLAG'), 'w') as f: f.write("NEEDS_PROFILES")
+                    if failure_strikes >= 3:
+                        remove_profile_from_health(profile_idx, f"3 {error_type} errors")
                         break
-                        
+                    
                     try:
                         context, page = launch_browser(p, profile_idx, USER_DATA_DIR)
+                        context_ref[0] = context
                         tasks_since_restart = 0
-                    except: break
+                    except Exception as e:
+                        remove_profile_from_health(profile_idx, f"Reactive recovery failed: {e}")
+                        break
                     continue
                     
                 # Success
-                captcha_strikes = 0
+                failure_strikes = 0
                 tasks_since_restart += 1
                 
                 print(f"[Profile {profile_idx}] Extracted: {name.encode('ascii', 'ignore').decode('ascii')} -> {phone.encode('ascii', 'ignore').decode('ascii')}")
@@ -232,6 +286,9 @@ def worker(profile_idx, task_queue, write_lock):
                 has_phone = phone != "No Phone Found"
                 update_history_metrics(has_phone, write_lock)
                 
+        except Exception as e:
+            print(f"[Profile {profile_idx}] Unhandled global exception in worker: {e}")
+            remove_profile_from_health(profile_idx, f"Unhandled exception: {e}")
         finally:
             try: context.close()
             except: pass

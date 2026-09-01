@@ -63,6 +63,17 @@ def wipe_old_profiles():
         print("\nNo old profiles to delete.")
 
 def create_and_setup_profile(profile_path: Path):
+    try:
+        import subprocess
+        user_data_dir = str(profile_path / "User Data")
+        safe_path = user_data_dir.replace('\\', '\\\\')
+        ps_cmd = f"Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object {{$_.CommandLine -match '{safe_path}'}} | Invoke-CimMethod -MethodName Terminate"
+        subprocess.run(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
+        lock_file = Path(user_data_dir) / "SingletonLock"
+        if lock_file.exists():
+            try: lock_file.unlink()
+            except: pass
+    except: pass
     user_data_dir = str(profile_path / "User Data")
     
     print(f"\nOpening {profile_path.name} in headed mode...")

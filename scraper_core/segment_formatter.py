@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 import csv
 import re
@@ -137,6 +137,16 @@ def main():
         for index, email in enumerate(sorted(unique_emails), start=1):
             row_id = f"{initial_wording}{base_file_name}_{index}"
             writer.writerow([row_id, email])
+            
+    import shutil
+    bat_source = os.path.join(BASE_DIR, 'change_campaign_date.bat')
+    if os.path.exists(bat_source):
+        bat_dest = os.path.join(UPLOADABLE_DIR, 'change_campaign_date.bat')
+        try:
+            shutil.copy2(bat_source, bat_dest)
+            print(f"[*] Copied change_campaign_date.bat to uploadable_csvs directory.")
+        except Exception as e:
+            print(f"[!] Failed to copy change_campaign_date.bat: {e}")
             
     print(f"[+] Total Rows Processed: {total_rows}")
     print(f"[+] Total Rows Rejected/Unmatched: {rejected_rows}")

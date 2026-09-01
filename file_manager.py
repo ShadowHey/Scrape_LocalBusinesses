@@ -69,10 +69,24 @@ def archive_task(task, is_paused=False, is_error=False):
             except Exception as e:
                 print(f"Error moving {f}: {e}")
                 
+    # 3.5 Move segmentation folders
+    for seg_folder in ["pre_segment_csvs", "uploadable_csvs"]:
+        src_folder = os.path.join(BASE_DIR, seg_folder)
+        if os.path.exists(src_folder):
+            try:
+                shutil.move(src_folder, os.path.join(target_dir, seg_folder))
+            except Exception as e:
+                print(f"Error moving {seg_folder}: {e}")
+
     # 4. If this is a pause, copy the global history.json state to this folder so we can inspect it or restore it
     history_json = os.path.join(BASE_DIR, "admin", "history.json")
     if os.path.exists(history_json):
         shutil.copy2(history_json, os.path.join(target_dir, "history.json"))
+        
+    # 5. Drop the self-destructing batch script into the archive
+    bat_src = os.path.join(BASE_DIR, "change_campaign_date.bat")
+    if os.path.exists(bat_src):
+        shutil.copy2(bat_src, os.path.join(target_dir, "change_campaign_date.bat"))
         
     status_str = "PAUSED" if is_paused else "completed"
     print(f"\\n[+] Task artifacts archived successfully to {folder_name}/ ({status_str})")
@@ -117,6 +131,15 @@ def restore_task(task):
             if os.path.exists(archived_f):
                 shutil.move(archived_f, os.path.join(BASE_DIR, f))
                 
+    # 3.5 Restore segmentation folders
+    for seg_folder in ["pre_segment_csvs", "uploadable_csvs"]:
+        archived_seg = os.path.join(paused_folder, seg_folder)
+        if os.path.exists(archived_seg):
+            try:
+                shutil.move(archived_seg, os.path.join(BASE_DIR, seg_folder))
+            except Exception as e:
+                print(f"Error restoring {seg_folder}: {e}")
+
     # We do NOT restore history.json globally because admin/history.json is the global truth.
     # The copy inside the paused folder was just a backup snippet.
     

@@ -196,6 +196,18 @@ def build_maps_url(query: str) -> str:
 import queue
 
 def launch_browser(p, profile_idx, user_data_dir, profile_directory="Default"):
+    try:
+        import subprocess
+        from pathlib import Path
+        safe_path = user_data_dir.replace('\\', '\\\\')
+        ps_cmd = f"Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object {{$_.CommandLine -match '{safe_path}'}} | Invoke-CimMethod -MethodName Terminate"
+        subprocess.run(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0)
+        lock_file = Path(user_data_dir) / "SingletonLock"
+        if lock_file.exists():
+            try: lock_file.unlink()
+            except: pass
+    except: pass
+
     is_headless = (BROWSER_MODE == "headless")
     
     browser_args = [
@@ -289,6 +301,34 @@ def extract_single_profile(page, csv_path):
         writer.writerow([name, page.url, address, website, category])
 
 
+
+def remove_profile_from_health(profile_idx, reason=""):
+    import json, os
+    print(f"[Profile {profile_idx}] BURNED ({reason}). Removing from healthy profiles.")
+    admin_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin')
+    healthy_json = os.path.join(admin_dir, 'health_profiles.json')
+    safety_limit_json = os.path.join(admin_dir, 'safety_limit.json')
+    
+    try:
+        with open(healthy_json, 'r') as f: paths = json.load(f)
+        paths = [p for p in paths if f"ChromeUserData{profile_idx}" not in p]
+        with open(healthy_json, 'w') as f: json.dump(paths, f)
+        remaining = len(paths)
+    except:
+        remaining = 0
+        
+    try:
+        with open(safety_limit_json, 'r') as f: safety_limit = json.load(f).get("safety_limit", 1)
+    except:
+        safety_limit = 1
+        
+    if remaining < safety_limit:
+        print(f"\\nCRITICAL: Healthy profiles dropped below safety limit ({remaining} < {safety_limit}).")
+        print("Task paused and archived. Please run profile_manager.py to generate new profiles before resuming!")
+        with open(os.path.join(admin_dir, 'PIPELINE_PAUSED'), 'w') as f: f.write("PAUSED")
+        with open(os.path.join(admin_dir, 'STOP_FLAG'), 'w') as f: f.write("PAUSE_AND_WAIT")
+        with open(os.path.join(admin_dir, 'NEEDS_PROFILES_FLAG'), 'w') as f: f.write("NEEDS_PROFILES")
+
 def worker(profile_idx: int, task_queue):
     print(f"\n[Profile {profile_idx}] Starting worker.")
     
@@ -308,12 +348,40 @@ def worker(profile_idx: int, task_queue):
             context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
         except Exception as e:
             print(f"[Profile {profile_idx}] Fatal error launching browser: {e}")
+            remove_profile_from_health(profile_idx, f"Initial launch failed: {e}")
             return
             
         tasks_since_restart = 0
             
-        captcha_strikes = 0
+        failure_strikes = 0
+        
+        start_time_ref = [None]
+        context_ref = [None]
+        
+        def task_watchdog():
+            import time
+            while True:
+                try:
+                    st = start_time_ref[0]
+                    ctx = context_ref[0]
+                    if st is not None and ctx is not None:
+                        if time.time() - st > 30:
+                            print(f"\n[Profile {profile_idx} Watchdog] Task exceeded 30 seconds! Force closing context...")
+                            try:
+                                ctx.close()
+                            except:
+                                pass
+                            start_time_ref[0] = None
+                except Exception:
+                    pass
+                time.sleep(1)
+                
+        import threading
+        watchdog_thread = threading.Thread(target=task_watchdog, daemon=True)
+        watchdog_thread.start()
+        
         try:
+            context_ref[0] = context
             while True:
                 pause_flag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin', 'PAUSE_FLAG')
                 if os.path.exists(pause_flag_path):
@@ -333,6 +401,7 @@ def worker(profile_idx: int, task_queue):
                         
                     print(f"[Profile {profile_idx}] Resuming after health check...")
                     context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
+                    context_ref[0] = context
                     tasks_since_restart = 0
 
                 try:
@@ -347,19 +416,17 @@ def worker(profile_idx: int, task_queue):
                     except: pass
                     try:
                         context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
+                        context_ref[0] = context
                         tasks_since_restart = 0
                     except Exception as e:
                         print(f"[Profile {profile_idx}] Fatal error during proactive restart: {e}")
                         task_queue.put((term, zip_code))
                         break
                     
+                start_time_ref[0] = time.time()
                 query = f"{term} in {zip_code} {locality_label}".strip()
                 raw_csv_path = TEMP_DIR / f"{term.replace(' ', '_')}_{zip_code}.csv"
                 
-                if raw_csv_path.exists() and raw_csv_path.stat().st_size > 0:
-                    print(f"[Profile {profile_idx}] Skipping: {query} (Already processed)")
-                    continue
-                    
                 print(f"[Profile {profile_idx}] Searching: {query}")
                 network_utils.wait_for_network()
                 
@@ -371,11 +438,12 @@ def worker(profile_idx: int, task_queue):
                     print(f"[Profile {profile_idx}] State: {state}")
                     
                     if state in ["no_results", "single", "list"]:
-                        captcha_strikes = 0
+                        failure_strikes = 0
                         
                     if state == "no_results":
                         print(f"  -> Skipping '{query}' (0 results)")
                         tasks_since_restart += 1
+                        start_time_ref[0] = None
                         continue
                         
                     elif state == "single":
@@ -383,6 +451,7 @@ def worker(profile_idx: int, task_queue):
                         extract_single_profile(maps_page, raw_csv_path)
                         print(f"  -> Extracted to {raw_csv_path.name}")
                         tasks_since_restart += 1
+                        start_time_ref[0] = None
                         continue
                         
                     elif state == "list":
@@ -400,54 +469,36 @@ def worker(profile_idx: int, task_queue):
                     else:
                         raise Exception("Timeout waiting for map elements (Possible Bot Challenge or Crash)")
                         
+                    start_time_ref[0] = None
                 except Exception as e:
+                    start_time_ref[0] = None
                     print(f"  Error on '{query}': {e}")
                     if not network_utils.is_internet_available():
                         network_utils.wait_for_network()
                         print(f"  Retrying '{query}' after network restored...")
                         task_queue.put((term, zip_code))
                     else:
-                        captcha_strikes += 1
+                        failure_strikes += 1
                         error_type = "CAPTCHA" if str(e) == "CAPTCHA_DETECTED" else "Timeout/Crash"
-                        print(f"  [Profile {profile_idx}] {error_type} strike {captcha_strikes}/3. Initiating restart...")
+                        print(f"  [Profile {profile_idx}] {error_type} strike {failure_strikes}/3. Initiating restart...")
                         task_queue.put((term, zip_code))
                         try: context.close()
                         except: pass
                         
-                        if captcha_strikes >= 3:
-                            print(f"[Profile {profile_idx}] BURNED (3 consecutive {error_type} errors). Removing from healthy profiles.")
-                            admin_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin')
-                            healthy_json = os.path.join(admin_dir, 'health_profiles.json')
-                            safety_limit_json = os.path.join(admin_dir, 'safety_limit.json')
-                            
-                            try:
-                                with open(healthy_json, 'r') as f: paths = json.load(f)
-                                paths = [p for p in paths if f"ChromeUserData{profile_idx}" not in p]
-                                with open(healthy_json, 'w') as f: json.dump(paths, f)
-                                remaining = len(paths)
-                            except:
-                                remaining = 0
-                                
-                            try:
-                                with open(safety_limit_json, 'r') as f: safety_limit = json.load(f).get("safety_limit", 1)
-                            except:
-                                safety_limit = 1
-                                
-                            if remaining < safety_limit:
-                                print(f"\nCRITICAL: Healthy profiles dropped below safety limit ({remaining} < {safety_limit}).")
-                                print("Task paused and archived. Please run profile_manager.py to generate new profiles before resuming!")
-                                with open(os.path.join(admin_dir, 'PIPELINE_PAUSED'), 'w') as f: f.write("PAUSED")
-                                with open(os.path.join(admin_dir, 'STOP_FLAG'), 'w') as f: f.write("PAUSE_AND_WAIT")
-                                with open(os.path.join(admin_dir, 'NEEDS_PROFILES_FLAG'), 'w') as f: f.write("NEEDS_PROFILES")
-                                
+                        if failure_strikes >= 3:
+                            remove_profile_from_health(profile_idx, f"3 consecutive {error_type} errors")
                             break
-                            
+                        
                         try:
                             context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
                             tasks_since_restart = 0
                         except Exception as crash_e:
                             print(f"[Profile {profile_idx}] Fatal error during reactive recovery: {crash_e}")
+                            remove_profile_from_health(profile_idx, f"Reactive recovery failed: {crash_e}")
                             break
+        except Exception as e:
+            print(f"[Profile {profile_idx}] Unhandled global exception in worker: {e}")
+            remove_profile_from_health(profile_idx, f"Unhandled exception: {e}")
         finally:
             try: context.close()
             except: pass
@@ -481,9 +532,22 @@ def run():
     manager = multiprocessing.Manager()
     task_queue = manager.Queue()
     
+    temp_dir = "temp_csvs"
+    completed_set = set()
+    if os.path.exists(temp_dir):
+        for f in os.listdir(temp_dir):
+            if f.endswith('.csv'):
+                f_path = os.path.join(temp_dir, f)
+                if os.path.getsize(f_path) > 0:
+                    completed_set.add(f)
+                    
+    tasks_added = 0
     for term in search_terms:
         for zip_code in zip_codes:
-            task_queue.put((term, zip_code))
+            filename = f"{term.replace(' ', '_')}_{zip_code}.csv"
+            if filename not in completed_set:
+                task_queue.put((term, zip_code))
+                tasks_added += 1
         
     print(f"\n=======================================================")
     print(f"Starting browser pool with up to {num_profiles} profiles.")
