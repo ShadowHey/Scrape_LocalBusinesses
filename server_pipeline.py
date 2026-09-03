@@ -1,4 +1,4 @@
-﻿"""
+"""
 server_pipeline.py
 ==================
 A single, fully automated pipeline script designed to run on a server
@@ -194,11 +194,10 @@ def _remove_lock(user_data_dir: str):
             pass
 
 
-def _launch_server_browser(p, profile_path: str, ext_path: str):
+def _launch_server_browser(p, profile_path: str):
     """
-    Launch Chromium with locally loaded extension.
-    Uses headless=False (required for extensions) with an offscreen
-    window on Windows, or relies on the virtual display on Linux.
+    Launch Chromium using the cloned Golden Profile which already has the
+    extension installed from the web store.
     """
     from lead import discover_extension, get_extension_service_worker
 
@@ -206,8 +205,6 @@ def _launch_server_browser(p, profile_path: str, ext_path: str):
     _remove_lock(user_data_dir)
 
     browser_args = [
-        f"--load-extension={ext_path}",
-        f"--disable-extensions-except={ext_path}",
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-software-rasterizer",
@@ -274,7 +271,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
     with sync_playwright() as p:
         try:
             context, extension_id, sw, maps_page = _launch_server_browser(
-                p, profile_path, EXT_PATH
+                p, profile_path
             )
         except Exception as e:
             print(f"[Worker {worker_idx}] Fatal launch error: {e}")
@@ -299,7 +296,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
                         pass
                     try:
                         context, extension_id, sw, maps_page = _launch_server_browser(
-                            p, profile_path, EXT_PATH
+                            p, profile_path
                         )
                         tasks_since_restart = 0
                     except Exception as e:
@@ -356,7 +353,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
 
                     try:
                         context, extension_id, sw, maps_page = _launch_server_browser(
-                            p, profile_path, EXT_PATH
+                            p, profile_path
                         )
                         tasks_since_restart = 0
                     except Exception as crash_e:
