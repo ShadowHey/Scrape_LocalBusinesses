@@ -194,10 +194,9 @@ def _remove_lock(user_data_dir: str):
             pass
 
 
-def _launch_server_browser(p, profile_path: str):
+def _launch_server_browser(p, profile_path: str, ext_path: str):
     """
-    Launch Chromium using the cloned Golden Profile which already has the
-    extension installed from the web store.
+    Launch Chromium with locally loaded extension and auto-accept T&C.
     """
     from lead import discover_extension, get_extension_service_worker
 
@@ -205,6 +204,8 @@ def _launch_server_browser(p, profile_path: str):
     _remove_lock(user_data_dir)
 
     browser_args = [
+        f"--load-extension={ext_path}",
+        f"--disable-extensions-except={ext_path}",
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-software-rasterizer",
@@ -242,6 +243,15 @@ def _launch_server_browser(p, profile_path: str):
         context, "Instant Data Scraper", "ofaokhiedipichpaobibbnahnkdoiiah"
     )
     sw = get_extension_service_worker(context, extension_id)
+    
+    # [CRITICAL FIX] Instantly accept the extension's Terms and Conditions
+    # by writing directly to its local storage via the service worker.
+    # This bypasses the need for a manually created Windows golden profile!
+    try:
+        sw.evaluate("chrome.storage.local.set({optIn: true, optInHookShown: true})")
+    except Exception as e:
+        print(f"      [!] Failed to auto-accept T&C: {e}")
+
     maps_page = context.new_page()
     return context, extension_id, sw, maps_page
 
@@ -270,9 +280,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
 
     with sync_playwright() as p:
         try:
-            context, extension_id, sw, maps_page = _launch_server_browser(
-                p, profile_path
-            )
+            context, extension_id, sw, maps_page = _launch_server_browser(p, profile_path, EXT_PATH)
         except Exception as e:
             print(f"[Worker {worker_idx}] Fatal launch error: {e}")
             return
@@ -295,9 +303,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
                     except Exception:
                         pass
                     try:
-                        context, extension_id, sw, maps_page = _launch_server_browser(
-                            p, profile_path
-                        )
+                        context, extension_id, sw, maps_page = _launch_server_browser(p, profile_path, EXT_PATH)
                         tasks_since_restart = 0
                     except Exception as e:
                         print(f"[Worker {worker_idx}] Restart failed: {e}")
@@ -352,9 +358,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
                         break
 
                     try:
-                        context, extension_id, sw, maps_page = _launch_server_browser(
-                            p, profile_path
-                        )
+                        context, extension_id, sw, maps_page = _launch_server_browser(p, profile_path, EXT_PATH)
                         tasks_since_restart = 0
                     except Exception as crash_e:
                         print(f"[Worker {worker_idx}] Recovery failed: {crash_e}")
