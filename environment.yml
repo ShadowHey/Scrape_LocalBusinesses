@@ -1,0 +1,13 @@
+﻿name: scraper_env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pandas
+  - requests
+  - beautifulsoup4
+  - lxml
+  - pip
+  - pip:
+    - playwright
