@@ -176,7 +176,7 @@ def _launch_server_browser(p, profile_path: str, ext_path: str):
     """
     Launch Chromium with locally loaded extension and auto-accept T&C.
     """
-    from lead import discover_extension, get_extension_service_worker
+    from lead_v2 import discover_extension, get_extension_service_worker
 
     user_data_dir = str(Path(profile_path) / "User Data")
     _remove_lock(user_data_dir)
@@ -241,7 +241,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
     sys.path.insert(0, SCRAPER_CORE)
 
     from playwright.sync_api import sync_playwright
-    from lead import (
+    from lead_v2 import (
         detect_page_state, extract_single_profile,
         open_popup_and_crawl, build_maps_url
     )

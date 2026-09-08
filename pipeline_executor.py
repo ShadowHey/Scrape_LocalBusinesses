@@ -49,7 +49,7 @@ def initialize_history(task_id, mode):
         base = {
             "mode": mode,
             "pipeline_stages": {
-                "lead.py_completed": False,
+                "lead_v2.py_completed": False,
                 "aggregate.py_completed": False,
                 "archiving_completed": False
             },
@@ -100,9 +100,9 @@ def validate_pipeline_stage_from_files(task_id, mode):
     # Check if we can safely assume stages completed based on final output files
     # final_results/aggregated_leads.csv implies aggregate.py finished
     if os.path.exists(os.path.join(BASE_DIR, 'final_results', 'aggregated_leads.csv')):
-        if not stages.get("lead.py_completed"):
-            print("[*] Found aggregated_leads.csv, marking lead.py as completed.")
-            stages["lead.py_completed"] = True
+        if not stages.get("lead_v2.py_completed"):
+            print("[*] Found aggregated_leads.csv, marking lead_v2.py as completed.")
+            stages["lead_v2.py_completed"] = True
             
     # FinalEmails.csv implies cleaner.py finished, which implies pipeline.py finished
     if os.path.exists(os.path.join(BASE_DIR, 'FinalEmails.csv')):
@@ -246,11 +246,11 @@ def run_executor():
             validate_pipeline_stage_from_files(task_id, mode)
             
             # Step 1 & 2: ALWAYS run Google Maps Scraper and Aggregator first!
-            res = run_script('lead.py', task_id)
+            res = run_script('lead_v2.py', task_id)
             if res == "PAUSE_AND_EXIT": raise PauseAndExitError()
             elif res == "PAUSE_AND_WAIT": raise PauseAndWaitError()
             elif res == "cancelled": raise InterruptedError()
-            elif not res: raise Exception("lead.py failed")
+            elif not res: raise Exception("lead_v2.py failed")
             
             res = run_script('aggregate.py', task_id)
             if res == "PAUSE_AND_EXIT": raise PauseAndExitError()

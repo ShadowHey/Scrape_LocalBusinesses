@@ -143,7 +143,7 @@ def open_popup_and_crawl(context, extension_id, sw, maps_page, destination_csv: 
         
         popup.get_by_text(re.compile(r"crawling stopped\.\s*please download data or continue crawling\.", re.I)).first.wait_for(state="visible", timeout=30 * 60 * 1000)
         
-        with popup.expect_download(timeout=30_000) as dl_info:
+        with popup.expect_download(timeout=90_000) as dl_info:
             popup.get_by_text(re.compile(r"\bcsv\b", re.I)).first.click()
         
         download = dl_info.value
@@ -363,33 +363,7 @@ def worker(profile_idx: int, task_queue):
             
         failure_strikes = 0
         
-        start_time_ref = [None]
-        context_ref = [None]
-        
-        def task_watchdog():
-            import time
-            while True:
-                try:
-                    st = start_time_ref[0]
-                    ctx = context_ref[0]
-                    if st is not None and ctx is not None:
-                        if time.time() - st > 30:
-                            print(f"\n[Profile {profile_idx} Watchdog] Task exceeded 30 seconds! Force closing context...")
-                            try:
-                                ctx.close()
-                            except:
-                                pass
-                            start_time_ref[0] = None
-                except Exception:
-                    pass
-                time.sleep(1)
-                
-        import threading
-        watchdog_thread = threading.Thread(target=task_watchdog, daemon=True)
-        watchdog_thread.start()
-        
         try:
-            context_ref[0] = context
             while True:
                 pause_flag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'admin', 'PAUSE_FLAG')
                 if os.path.exists(pause_flag_path):
@@ -409,7 +383,6 @@ def worker(profile_idx: int, task_queue):
                         
                     print(f"[Profile {profile_idx}] Resuming after health check...")
                     context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
-                    context_ref[0] = context
                     tasks_since_restart = 0
 
                 try:
@@ -429,14 +402,11 @@ def worker(profile_idx: int, task_queue):
                     except: pass
                     try:
                         context, extension_id, sw, maps_page = launch_browser(p, profile_idx, USER_DATA_DIR, PROFILE_DIRECTORY)
-                        context_ref[0] = context
                         tasks_since_restart = 0
                     except Exception as e:
                         print(f"[Profile {profile_idx}] Fatal error during proactive restart: {e}")
                         task_queue.put((term, zip_code, attempts))
                         break
-                    
-                start_time_ref[0] = time.time()
                 query = f"{term} in {zip_code} {locality_label}".strip()
                 raw_csv_path = TEMP_DIR / f"{term.replace(' ', '_')}_{zip_code}.csv"
                 
@@ -457,7 +427,6 @@ def worker(profile_idx: int, task_queue):
                         print(f"  -> Skipping '{query}' (0 results)")
                         mark_task_completed(TEMP_DIR, term, zip_code, "no_results")
                         tasks_since_restart += 1
-                        start_time_ref[0] = None
                         continue
                         
                     elif state == "single":
@@ -466,7 +435,6 @@ def worker(profile_idx: int, task_queue):
                         mark_task_completed(TEMP_DIR, term, zip_code, "success")
                         print(f"  -> Extracted to {raw_csv_path.name}")
                         tasks_since_restart += 1
-                        start_time_ref[0] = None
                         continue
                         
                     elif state == "list":
@@ -484,10 +452,7 @@ def worker(profile_idx: int, task_queue):
                         raise Exception("CAPTCHA_DETECTED")
                     else:
                         raise Exception("Timeout waiting for map elements (Possible Bot Challenge or Crash)")
-                        
-                    start_time_ref[0] = None
                 except Exception as e:
-                    start_time_ref[0] = None
                     print(f"  Error on '{query}': {e}")
                     if not network_utils.is_internet_available():
                         network_utils.wait_for_network()

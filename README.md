@@ -86,12 +86,12 @@ For the very first time you use the tool, or every time you relaunch all the pro
 ### pipeline_executor.py
 **Job:** The core pipeline engine.
 - Pulls tasks from the queue.
-- Executes lead.py, ggregate.py, cleaner.py, and segment_formatter.py sequentially.
+- Executes lead_v2.py, aggregate.py, cleaner.py, and segment_formatter.py sequentially.
 - Automatically captures execution start times to ensure perfectly named output files (e.g. Search_Locality_Date_Time.csv).
 
-### utomator.py
+### automator.py
 **Job:** Self-Healing Watchdog.
-- Monitors dmin/health_profiles.json every 2.5 minutes.
+- Monitors admin/health_profiles.json every 2.5 minutes.
 - If profiles drop below the safety threshold, it safely commands the executor to pause (PAUSE_AND_WAIT).
 - Automatically triggers profile_manager.py to restore lost profiles, then unpauses the executor.
 
