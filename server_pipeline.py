@@ -120,33 +120,11 @@ def validate_golden_profile(golden_dir: str):
 # ============================================================
 
 def start_virtual_display():
-    if IS_WINDOWS:
-        print("\n[Phase 2] Windows detected — skipping virtual display (offscreen mode used instead).")
-        return None
-
-    print("\n[Phase 2] Starting Xvfb virtual display...")
-    try:
-        from pyvirtualdisplay import Display
-        display = Display(visible=False, size=(1920, 1080))
-        display.start()
-        print("  [OK] Virtual display started.")
-        return display
-    except ImportError:
-        print("  [!] pyvirtualdisplay not installed.")
-        print("      Run: pip install pyvirtualdisplay && apt-get install -y xvfb")
-        sys.exit(1)
-    except Exception as e:
-        print(f"  [!] Failed to start virtual display: {e}")
-        sys.exit(1)
-
+    print("\n[Phase 2] Virtual display skipped — Using Chrome's --headless=new mode instead.")
+    return None
 
 def stop_virtual_display(display):
-    if display is not None:
-        try:
-            display.stop()
-            print("[Phase 5] Virtual display stopped.")
-        except Exception:
-            pass
+    pass
 
 # ============================================================
 # PHASE 3 — CLONE PROFILES
@@ -198,12 +176,13 @@ def _launch_server_browser(p, profile_path: str, ext_path: str):
     """
     Launch Chromium with locally loaded extension and auto-accept T&C.
     """
-    from lead import discover_extension, get_extension_service_worker
+    from lead_v2 import discover_extension, get_extension_service_worker
 
     user_data_dir = str(Path(profile_path) / "User Data")
     _remove_lock(user_data_dir)
 
     browser_args = [
+        "--headless=new",
         f"--load-extension={ext_path}",
         f"--disable-extensions-except={ext_path}",
         "--disable-dev-shm-usage",
@@ -215,10 +194,6 @@ def _launch_server_browser(p, profile_path: str, ext_path: str):
         "--disable-background-timer-throttling",
         "--disable-backgrounding-occluded-windows",
     ]
-
-    # On Windows, push window off-screen since we have no virtual display
-    if IS_WINDOWS:
-        browser_args.append("--window-position=-10000,-10000")
 
     context = p.chromium.launch_persistent_context(
         user_data_dir=user_data_dir,
@@ -266,7 +241,7 @@ def _server_worker(worker_idx: int, profile_path: str, task_queue, locality_labe
     sys.path.insert(0, SCRAPER_CORE)
 
     from playwright.sync_api import sync_playwright
-    from lead import (
+    from lead_v2 import (
         detect_page_state, extract_single_profile,
         open_popup_and_crawl, build_maps_url
     )

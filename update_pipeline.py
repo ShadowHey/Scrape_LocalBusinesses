@@ -26,7 +26,7 @@ def initialize_history(task_id, mode):
         base = {
             "mode": mode,
             "pipeline_stages": {
-                "lead.py_completed": False,
+                "lead_v2.py_completed": False,
                 "aggregate.py_completed": False,
                 "archiving_completed": False
             },
@@ -114,9 +114,9 @@ run_executor_old = """
         # Determine Pipeline Execution
         try:
             # Step 1 & 2: ALWAYS run Google Maps Scraper and Aggregator first!
-            res = run_script('lead.py', task_id, "Collecting data from Google Maps")
+            res = run_script('lead_v2.py', task_id, "Collecting data from Google Maps")
             if res == "cancelled": raise InterruptedError()
-            elif not res: raise Exception("lead.py failed")
+            elif not res: raise Exception("lead_v2.py failed")
             
             res = run_script('aggregate.py', task_id, "Aggregating Leads")
             if res == "cancelled": raise InterruptedError()
@@ -159,9 +159,9 @@ run_executor_new = """
             initialize_history(task_id, mode)
             
             # Step 1 & 2: ALWAYS run Google Maps Scraper and Aggregator first!
-            res = run_script('lead.py', task_id)
+            res = run_script('lead_v2.py', task_id)
             if res == "cancelled": raise InterruptedError()
-            elif not res: raise Exception("lead.py failed")
+            elif not res: raise Exception("lead_v2.py failed")
             
             res = run_script('aggregate.py', task_id)
             if res == "cancelled": raise InterruptedError()
