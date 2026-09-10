@@ -4,10 +4,11 @@
 This update introduces robust auto-recovery, advanced email formatting, intelligent self-healing profile systems, and built-in campaign tools:
 
 ### Added Functionalities:
+- **Dynamic Pincode Loading (Excel Input)**: The pipeline now intelligently parses state names (like "Texas") when provided in the online Excel config sheet, automatically loading thousands of required pincodes directly from `final_queue_builder.py` under the hood! Regular manual pincodes are still parsed normally.
 - **Built-in Campaign Date Changer**: change_campaign_date.bat is now seamlessly integrated into the pipeline. segment_formatter.py automatically copies the script into the uploadable_csvs directory upon completion, allowing users to safely update dates on their finalized CSVs locally without losing the script.
 - **Auto-Resume Interrupted Tasks**: pipeline_executor.py has been upgraded to automatically detect and resume tasks that were abruptly interrupted (e.g., due to a sudden power cut). It intelligently scans your working directory to validate completed pipeline stages and seamlessly picks up where it left off.
 - **Dual-Stage Email Segmentation**: main.py now prompts for an *Initial Wording* segment (e.g. groupbookings_). The newly added segment_formatter.py script automatically runs at the end of the pipeline, performing rigorous email deduplication/cleaning to output raw emails to pre_segment_csvs/, and then builds the precise uploadable format with structured IDs directly into uploadable_csvs/.
-- **Self-Healing Profile Automator**: utomator.py has been completely rewritten into an active background watchdog. It polls your health_profiles.json every 2.5 minutes, calculates profile burns against your safety limits, gracefully pauses the pipeline if needed, regenerates fresh profiles under the hood, and instantly resumes the pipeline-creating a flawless infinite loop!
+- **Self-Healing Profile Automator**:  utomator.py has been completely rewritten into an active background watchdog. It polls your health_profiles.json every 2.5 minutes, calculates profile burns against your safety limits, gracefully pauses the pipeline if needed, regenerates fresh profiles under the hood, and instantly resumes the pipeline-creating a flawless infinite loop!
 
 ### Removed / Legacy Functionalities:
 - **Self-Deleting Date Script**: Removed the self-deletion mechanism from change_campaign_date.bat to allow it to persist inside the payload folders for permanent re-use.
